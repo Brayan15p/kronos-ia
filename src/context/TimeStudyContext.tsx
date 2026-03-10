@@ -59,6 +59,10 @@ export const TimeStudyProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     setCycles((prev) => [...prev, cycle]);
   }, []);
 
+  const removeCycle = useCallback((cycleId: string) => {
+    setCycles((prev) => prev.filter((c) => c.id !== cycleId));
+  }, []);
+
   const addDefect = useCallback((defect: DefectRecord) => {
     setDefects((prev) => [...prev, defect]);
   }, []);
