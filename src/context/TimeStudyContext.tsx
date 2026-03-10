@@ -78,7 +78,7 @@ export const TimeStudyProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   }, []);
 
   return (
-    <TimeStudyContext.Provider value={{ cycles, defects, qualityChecks, addCycle, addDefect, addQualityCheck, clearAll }}>
+    <TimeStudyContext.Provider value={{ cycles, defects, qualityChecks, addCycle, removeCycle, addDefect, addQualityCheck, clearAll }}>
       {children}
     </TimeStudyContext.Provider>
   );
