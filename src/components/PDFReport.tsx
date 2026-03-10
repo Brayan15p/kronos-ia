@@ -2,15 +2,7 @@ import React from "react";
 import { FileDown, Lightbulb } from "lucide-react";
 import { useTimeStudy } from "@/context/TimeStudyContext";
 import jsPDF from "jspdf";
-import "jspdf-autotable";
-
-// Extend jsPDF type for autotable
-declare module "jspdf" {
-  interface jsPDF {
-    autoTable: (options: Record<string, unknown>) => jsPDF;
-    lastAutoTable: { finalY: number };
-  }
-}
+import autoTable from "jspdf-autotable";
 
 const PDFReport: React.FC = () => {
   const { cycles, defects, qualityChecks } = useTimeStudy();
@@ -113,7 +105,7 @@ const PDFReport: React.FC = () => {
     doc.text("Resumen Ejecutivo", 14, y);
     y += 8;
 
-    doc.autoTable({
+    autoTable(doc, {
       startY: y,
       head: [["Métrica", "Valor"]],
       body: [
@@ -129,7 +121,7 @@ const PDFReport: React.FC = () => {
       styles: { fontSize: 9 },
     });
 
-    y = doc.lastAutoTable.finalY + 12;
+    y = (doc as any).lastAutoTable.finalY + 12;
 
     // Cycles table
     if (cycles.length > 0) {
@@ -138,7 +130,7 @@ const PDFReport: React.FC = () => {
       doc.text("Registro de Tiempos", 14, y);
       y += 8;
 
-      doc.autoTable({
+      autoTable(doc, {
         startY: y,
         head: [["#", "Operario", "Ciclo", "Tiempo", "Hora"]],
         body: cycles.map((c, i) => [
@@ -153,7 +145,7 @@ const PDFReport: React.FC = () => {
         styles: { fontSize: 8 },
       });
 
-      y = doc.lastAutoTable.finalY + 12;
+      y = (doc as any).lastAutoTable.finalY + 12;
     }
 
     // Defects
@@ -164,7 +156,7 @@ const PDFReport: React.FC = () => {
       doc.text("Registro de Defectos", 14, y);
       y += 8;
 
-      doc.autoTable({
+      autoTable(doc, {
         startY: y,
         head: [["Tipo", "Severidad", "Operario", "Descripción"]],
         body: defects.map((d) => [d.type, d.severity.toUpperCase(), `Op. ${d.operatorId}`, d.description || "-"]),
@@ -173,7 +165,7 @@ const PDFReport: React.FC = () => {
         styles: { fontSize: 8 },
       });
 
-      y = doc.lastAutoTable.finalY + 12;
+      y = (doc as any).lastAutoTable.finalY + 12;
     }
 
     // Suggestions
