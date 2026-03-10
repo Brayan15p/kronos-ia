@@ -8,7 +8,7 @@ interface Props {
 }
 
 const OperatorTimer: React.FC<Props> = ({ operatorId, operatorName }) => {
-  const { cycles, addCycle } = useTimeStudy();
+  const { cycles, addCycle, removeCycle } = useTimeStudy();
   const [isRunning, setIsRunning] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const intervalRef = useRef<number | null>(null);
