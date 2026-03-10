@@ -36,6 +36,7 @@ interface TimeStudyState {
   defects: DefectRecord[];
   qualityChecks: QualityCheck[];
   addCycle: (cycle: CycleRecord) => void;
+  removeCycle: (cycleId: string) => void;
   addDefect: (defect: DefectRecord) => void;
   addQualityCheck: (check: QualityCheck) => void;
   clearAll: () => void;
@@ -58,6 +59,10 @@ export const TimeStudyProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     setCycles((prev) => [...prev, cycle]);
   }, []);
 
+  const removeCycle = useCallback((cycleId: string) => {
+    setCycles((prev) => prev.filter((c) => c.id !== cycleId));
+  }, []);
+
   const addDefect = useCallback((defect: DefectRecord) => {
     setDefects((prev) => [...prev, defect]);
   }, []);
@@ -73,7 +78,7 @@ export const TimeStudyProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   }, []);
 
   return (
-    <TimeStudyContext.Provider value={{ cycles, defects, qualityChecks, addCycle, addDefect, addQualityCheck, clearAll }}>
+    <TimeStudyContext.Provider value={{ cycles, defects, qualityChecks, addCycle, removeCycle, addDefect, addQualityCheck, clearAll }}>
       {children}
     </TimeStudyContext.Provider>
   );

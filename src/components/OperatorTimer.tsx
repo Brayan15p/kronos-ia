@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback } from "react";
-import { Play, Pause, RotateCcw, Save, User } from "lucide-react";
+import { Play, Pause, RotateCcw, Save, User, Trash2 } from "lucide-react";
 import { useTimeStudy, CycleRecord } from "@/context/TimeStudyContext";
 
 interface Props {
@@ -8,7 +8,7 @@ interface Props {
 }
 
 const OperatorTimer: React.FC<Props> = ({ operatorId, operatorName }) => {
-  const { cycles, addCycle } = useTimeStudy();
+  const { cycles, addCycle, removeCycle } = useTimeStudy();
   const [isRunning, setIsRunning] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const intervalRef = useRef<number | null>(null);
@@ -141,7 +141,16 @@ const OperatorTimer: React.FC<Props> = ({ operatorId, operatorName }) => {
           {operatorCycles.slice(-5).reverse().map((c) => (
             <div key={c.id} className="flex items-center justify-between text-sm py-1 px-2 rounded bg-muted/30">
               <span className="text-muted-foreground font-mono">#{c.cycleNumber}</span>
-              <span className="font-mono text-foreground">{formatTime(c.duration)}</span>
+              <div className="flex items-center gap-2">
+                <span className="font-mono text-foreground">{formatTime(c.duration)}</span>
+                <button
+                  onClick={() => removeCycle(c.id)}
+                  className="text-destructive/60 hover:text-destructive transition-colors p-0.5"
+                  title="Eliminar ciclo"
+                >
+                  <Trash2 className="w-3 h-3" />
+                </button>
+              </div>
             </div>
           ))}
         </div>
