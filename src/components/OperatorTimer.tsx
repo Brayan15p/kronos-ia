@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback } from "react";
-import { Play, Pause, RotateCcw, Save, User } from "lucide-react";
+import { Play, Pause, RotateCcw, Save, User, Trash2 } from "lucide-react";
 import { useTimeStudy, CycleRecord } from "@/context/TimeStudyContext";
 
 interface Props {
