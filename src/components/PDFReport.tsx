@@ -105,7 +105,7 @@ const PDFReport: React.FC = () => {
     doc.text("Resumen Ejecutivo", 14, y);
     y += 8;
 
-    doc.autoTable({
+    autoTable(doc, {
       startY: y,
       head: [["Métrica", "Valor"]],
       body: [
@@ -121,7 +121,7 @@ const PDFReport: React.FC = () => {
       styles: { fontSize: 9 },
     });
 
-    y = doc.lastAutoTable.finalY + 12;
+    y = (doc as any).lastAutoTable.finalY + 12;
 
     // Cycles table
     if (cycles.length > 0) {
