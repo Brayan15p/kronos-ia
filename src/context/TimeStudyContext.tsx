@@ -36,6 +36,7 @@ interface TimeStudyState {
   defects: DefectRecord[];
   qualityChecks: QualityCheck[];
   addCycle: (cycle: CycleRecord) => void;
+  removeCycle: (cycleId: string) => void;
   addDefect: (defect: DefectRecord) => void;
   addQualityCheck: (check: QualityCheck) => void;
   clearAll: () => void;
