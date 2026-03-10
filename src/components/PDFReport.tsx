@@ -2,15 +2,7 @@ import React from "react";
 import { FileDown, Lightbulb } from "lucide-react";
 import { useTimeStudy } from "@/context/TimeStudyContext";
 import jsPDF from "jspdf";
-import "jspdf-autotable";
-
-// Extend jsPDF type for autotable
-declare module "jspdf" {
-  interface jsPDF {
-    autoTable: (options: Record<string, unknown>) => jsPDF;
-    lastAutoTable: { finalY: number };
-  }
-}
+import autoTable from "jspdf-autotable";
 
 const PDFReport: React.FC = () => {
   const { cycles, defects, qualityChecks } = useTimeStudy();
