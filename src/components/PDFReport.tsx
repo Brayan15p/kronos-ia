@@ -156,7 +156,7 @@ const PDFReport: React.FC = () => {
       doc.text("Registro de Defectos", 14, y);
       y += 8;
 
-      doc.autoTable({
+      autoTable(doc, {
         startY: y,
         head: [["Tipo", "Severidad", "Operario", "Descripción"]],
         body: defects.map((d) => [d.type, d.severity.toUpperCase(), `Op. ${d.operatorId}`, d.description || "-"]),
@@ -165,7 +165,7 @@ const PDFReport: React.FC = () => {
         styles: { fontSize: 8 },
       });
 
-      y = doc.lastAutoTable.finalY + 12;
+      y = (doc as any).lastAutoTable.finalY + 12;
     }
 
     // Suggestions
