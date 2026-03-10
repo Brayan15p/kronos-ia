@@ -130,7 +130,7 @@ const PDFReport: React.FC = () => {
       doc.text("Registro de Tiempos", 14, y);
       y += 8;
 
-      doc.autoTable({
+      autoTable(doc, {
         startY: y,
         head: [["#", "Operario", "Ciclo", "Tiempo", "Hora"]],
         body: cycles.map((c, i) => [
@@ -145,7 +145,7 @@ const PDFReport: React.FC = () => {
         styles: { fontSize: 8 },
       });
 
-      y = doc.lastAutoTable.finalY + 12;
+      y = (doc as any).lastAutoTable.finalY + 12;
     }
 
     // Defects
