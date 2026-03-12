@@ -1,12 +1,12 @@
 import React from "react";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell } from "recharts";
-import { Activity, TrendingDown, Target, Clock } from "lucide-react";
-import { useTimeStudy } from "@/context/TimeStudyContext";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell, AreaChart, Area } from "recharts";
+import { Activity, TrendingDown, Target, Clock, Users, AlertTriangle } from "lucide-react";
+import { useTimeStudy, CRANE_STEPS } from "@/context/TimeStudyContext";
 
-const CHART_COLORS = ["hsl(175,80%,50%)", "hsl(260,70%,60%)", "hsl(38,90%,55%)", "hsl(0,72%,55%)", "hsl(150,60%,45%)"];
+const CHART_COLORS = ["hsl(185,100%,50%)", "hsl(265,80%,62%)", "hsl(40,95%,55%)", "hsl(0,80%,58%)", "hsl(155,70%,45%)"];
 
 const Dashboard: React.FC = () => {
-  const { cycles, defects, qualityChecks } = useTimeStudy();
+  const { cycles, defects, qualityChecks, operators, costConfig } = useTimeStudy();
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -14,7 +14,6 @@ const Dashboard: React.FC = () => {
     return `${mins}:${secs.toString().padStart(2, "0")}`;
   };
 
-  // Stats
   const totalCycles = cycles.length;
   const avgTime = totalCycles > 0 ? cycles.reduce((s, c) => s + c.duration, 0) / totalCycles : 0;
   const bestTime = totalCycles > 0 ? Math.min(...cycles.map((c) => c.duration)) : 0;
@@ -22,51 +21,52 @@ const Dashboard: React.FC = () => {
     ? Math.round((qualityChecks.filter((q) => q.overallPass).length / qualityChecks.length) * 100)
     : 0;
 
-  // Cycle times by operator
-  const op1Cycles = cycles.filter((c) => c.operatorId === 1);
-  const op2Cycles = cycles.filter((c) => c.operatorId === 2);
+  // Cycle trend data
+  const cycleChartData = cycles.map((c, i) => ({
+    cycle: i + 1,
+    time: Number(c.duration.toFixed(1)),
+    operator: c.operatorName,
+  }));
 
-  const cycleChartData = Array.from(
-    { length: Math.max(op1Cycles.length, op2Cycles.length) },
-    (_, i) => ({
-      cycle: i + 1,
-      "Operario 1": op1Cycles[i]?.duration ?? null,
-      "Operario 2": op2Cycles[i]?.duration ?? null,
-    })
-  );
-
-  // Defects by type
-  const defectTypeMap = new Map<string, number>();
-  defects.forEach((d) => {
-    defectTypeMap.set(d.type, (defectTypeMap.get(d.type) ?? 0) + 1);
+  // Operator comparison
+  const opComparison = operators.map((op) => {
+    const opCycles = cycles.filter((c) => c.operatorId === op.id);
+    const avg = opCycles.length > 0 ? opCycles.reduce((s, c) => s + c.duration, 0) / opCycles.length : 0;
+    return { name: op.name, promedio: Number(avg.toFixed(1)), ciclos: opCycles.length };
   });
+
+  // Step avg across all
+  const stepData = CRANE_STEPS.map((step) => {
+    const times = cycles.flatMap((c) => c.steps).filter((s) => s.stepNumber === step.number).map((s) => s.duration);
+    const avg = times.length > 0 ? times.reduce((a, b) => a + b, 0) / times.length : 0;
+    return { step: `P${step.number}`, avg: Number(avg.toFixed(1)), name: step.name };
+  });
+
+  // Defect pie
+  const defectTypeMap = new Map<string, number>();
+  defects.forEach((d) => defectTypeMap.set(d.type, (defectTypeMap.get(d.type) ?? 0) + 1));
   const defectPieData = Array.from(defectTypeMap.entries()).map(([name, value]) => ({ name, value }));
 
-  // Severity distribution
   const severityData = [
     { name: "Leve", value: defects.filter((d) => d.severity === "leve").length },
     { name: "Moderado", value: defects.filter((d) => d.severity === "moderado").length },
     { name: "Crítico", value: defects.filter((d) => d.severity === "critico").length },
   ].filter((d) => d.value > 0);
+  const severityColors = ["hsl(40,95%,55%)", "hsl(265,80%,62%)", "hsl(0,80%,58%)"];
 
-  const severityColors = ["hsl(38,90%,55%)", "hsl(260,70%,60%)", "hsl(0,72%,55%)"];
-
-  // Operator comparison
-  const op1Avg = op1Cycles.length > 0 ? op1Cycles.reduce((s, c) => s + c.duration, 0) / op1Cycles.length : 0;
-  const op2Avg = op2Cycles.length > 0 ? op2Cycles.reduce((s, c) => s + c.duration, 0) / op2Cycles.length : 0;
-
-  const comparisonData = [
-    { name: "Operario 1", promedio: Number(op1Avg.toFixed(1)), ciclos: op1Cycles.length },
-    { name: "Operario 2", promedio: Number(op2Avg.toFixed(1)), ciclos: op2Cycles.length },
-  ];
+  // Cost KPIs
+  const avgHourlyCost = operators.length > 0 ? operators.reduce((s, o) => s + o.hourlyCost, 0) / operators.length : 15000;
+  const costPerSecond = avgHourlyCost / 3600;
+  const excessPerCycle = Math.max(0, avgTime - costConfig.targetCycleTime);
+  const monthlyCostLoss = excessPerCycle * costPerSecond * costConfig.monthlyProductionTarget;
 
   const tooltipStyle = {
     contentStyle: {
-      background: "hsla(220,18%,12%,0.9)",
-      border: "1px solid hsla(220,14%,30%,0.4)",
+      background: "hsla(230,22%,9%,0.95)",
+      border: "1px solid hsla(230,16%,28%,0.3)",
       borderRadius: "8px",
       color: "hsl(210,20%,92%)",
-      fontSize: "12px",
+      fontSize: "11px",
     },
   };
 
@@ -74,7 +74,7 @@ const Dashboard: React.FC = () => {
     return (
       <div className="glass-card p-12 text-center animate-fade-in">
         <Activity className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-        <h3 className="text-lg font-semibold text-foreground mb-2">Sin datos aún</h3>
+        <h3 className="text-lg font-display font-bold text-foreground mb-2">Sin datos aún</h3>
         <p className="text-sm text-muted-foreground">Registra ciclos de tiempo para ver las estadísticas</p>
       </div>
     );
@@ -83,85 +83,108 @@ const Dashboard: React.FC = () => {
   return (
     <div className="space-y-5 animate-fade-in">
       {/* KPI Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
         <div className="glass-card p-4 text-center">
-          <Clock className="w-5 h-5 text-primary mx-auto mb-2" />
-          <div className="stat-value text-2xl text-primary">{formatTime(avgTime)}</div>
-          <div className="stat-label">Tiempo Promedio</div>
+          <Clock className="w-4 h-4 text-primary mx-auto mb-1.5" />
+          <div className="stat-value text-xl text-primary">{formatTime(avgTime)}</div>
+          <div className="stat-label text-[10px]">Promedio</div>
         </div>
         <div className="glass-card p-4 text-center">
-          <TrendingDown className="w-5 h-5 text-success mx-auto mb-2" />
-          <div className="stat-value text-2xl text-success">{formatTime(bestTime)}</div>
-          <div className="stat-label">Mejor Tiempo</div>
+          <TrendingDown className="w-4 h-4 text-success mx-auto mb-1.5" />
+          <div className="stat-value text-xl text-success">{formatTime(bestTime)}</div>
+          <div className="stat-label text-[10px]">Mejor</div>
         </div>
         <div className="glass-card p-4 text-center">
-          <Activity className="w-5 h-5 text-accent mx-auto mb-2" />
-          <div className="stat-value text-2xl text-foreground">{totalCycles}</div>
-          <div className="stat-label">Total Ciclos</div>
+          <Activity className="w-4 h-4 text-accent mx-auto mb-1.5" />
+          <div className="stat-value text-xl text-foreground">{totalCycles}</div>
+          <div className="stat-label text-[10px]">Ciclos</div>
         </div>
         <div className="glass-card p-4 text-center">
-          <Target className="w-5 h-5 text-warning mx-auto mb-2" />
-          <div className="stat-value text-2xl text-warning">{qualityRate}%</div>
-          <div className="stat-label">Tasa Calidad</div>
+          <Target className="w-4 h-4 text-warning mx-auto mb-1.5" />
+          <div className="stat-value text-xl text-warning">{qualityRate}%</div>
+          <div className="stat-label text-[10px]">Calidad</div>
+        </div>
+        <div className="glass-card p-4 text-center">
+          <AlertTriangle className="w-4 h-4 text-destructive mx-auto mb-1.5" />
+          <div className="stat-value text-xl text-destructive">{defects.length}</div>
+          <div className="stat-label text-[10px]">Defectos</div>
+        </div>
+        <div className="glass-card p-4 text-center">
+          <Users className="w-4 h-4 text-primary mx-auto mb-1.5" />
+          <div className="stat-value text-xl text-foreground">${(monthlyCostLoss / 1000).toFixed(0)}K</div>
+          <div className="stat-label text-[10px]">Pérdida/Mes</div>
         </div>
       </div>
 
       {/* Charts Row 1 */}
       <div className="grid md:grid-cols-2 gap-5">
-        {/* Cycle Times Line Chart */}
         <div className="glass-card p-5">
-          <h4 className="text-sm font-semibold text-foreground mb-4">Tiempos por Ciclo (seg)</h4>
+          <h4 className="text-sm font-display font-bold text-foreground mb-4">Tendencia de Tiempos</h4>
           <ResponsiveContainer width="100%" height={220}>
-            <LineChart data={cycleChartData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="hsla(220,14%,30%,0.3)" />
-              <XAxis dataKey="cycle" tick={{ fill: "hsl(215,12%,55%)", fontSize: 11 }} />
-              <YAxis tick={{ fill: "hsl(215,12%,55%)", fontSize: 11 }} />
+            <AreaChart data={cycleChartData}>
+              <CartesianGrid strokeDasharray="3 3" stroke="hsla(230,16%,28%,0.2)" />
+              <XAxis dataKey="cycle" tick={{ fill: "hsl(215,15%,50%)", fontSize: 10 }} />
+              <YAxis tick={{ fill: "hsl(215,15%,50%)", fontSize: 10 }} />
               <Tooltip {...tooltipStyle} />
-              <Line type="monotone" dataKey="Operario 1" stroke={CHART_COLORS[0]} strokeWidth={2} dot={{ r: 3 }} connectNulls />
-              <Line type="monotone" dataKey="Operario 2" stroke={CHART_COLORS[1]} strokeWidth={2} dot={{ r: 3 }} connectNulls />
-            </LineChart>
+              <Area type="monotone" dataKey="time" stroke="hsl(185,100%,50%)" fill="hsla(185,100%,50%,0.1)" strokeWidth={2} />
+            </AreaChart>
           </ResponsiveContainer>
         </div>
 
-        {/* Operator Comparison */}
         <div className="glass-card p-5">
-          <h4 className="text-sm font-semibold text-foreground mb-4">Comparación Operarios</h4>
+          <h4 className="text-sm font-display font-bold text-foreground mb-4">Comparación Operarios</h4>
           <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={comparisonData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="hsla(220,14%,30%,0.3)" />
-              <XAxis dataKey="name" tick={{ fill: "hsl(215,12%,55%)", fontSize: 11 }} />
-              <YAxis tick={{ fill: "hsl(215,12%,55%)", fontSize: 11 }} />
+            <BarChart data={opComparison}>
+              <CartesianGrid strokeDasharray="3 3" stroke="hsla(230,16%,28%,0.2)" />
+              <XAxis dataKey="name" tick={{ fill: "hsl(215,15%,50%)", fontSize: 10 }} />
+              <YAxis tick={{ fill: "hsl(215,15%,50%)", fontSize: 10 }} />
               <Tooltip {...tooltipStyle} />
-              <Bar dataKey="promedio" fill={CHART_COLORS[0]} radius={[4, 4, 0, 0]} />
+              <Bar dataKey="promedio" fill="hsl(185,100%,50%)" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>
       </div>
 
-      {/* Charts Row 2 */}
+      {/* Step analysis */}
+      {stepData.some((s) => s.avg > 0) && (
+        <div className="glass-card p-5">
+          <h4 className="text-sm font-display font-bold text-foreground mb-4">Tiempo Promedio por Paso (12 pasos)</h4>
+          <ResponsiveContainer width="100%" height={220}>
+            <BarChart data={stepData}>
+              <CartesianGrid strokeDasharray="3 3" stroke="hsla(230,16%,28%,0.2)" />
+              <XAxis dataKey="step" tick={{ fill: "hsl(215,15%,50%)", fontSize: 9 }} />
+              <YAxis tick={{ fill: "hsl(215,15%,50%)", fontSize: 10 }} />
+              <Tooltip {...tooltipStyle} />
+              <Bar dataKey="avg" name="Promedio (s)" radius={[3, 3, 0, 0]}>
+                {stepData.map((_, i) => (
+                  <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+
+      {/* Defects charts */}
       {defects.length > 0 && (
         <div className="grid md:grid-cols-2 gap-5">
           <div className="glass-card p-5">
-            <h4 className="text-sm font-semibold text-foreground mb-4">Distribución de Defectos</h4>
+            <h4 className="text-sm font-display font-bold text-foreground mb-4">Distribución de Defectos</h4>
             <ResponsiveContainer width="100%" height={220}>
               <PieChart>
                 <Pie data={defectPieData} cx="50%" cy="50%" outerRadius={80} dataKey="value" label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}>
-                  {defectPieData.map((_, i) => (
-                    <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
-                  ))}
+                  {defectPieData.map((_, i) => (<Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />))}
                 </Pie>
                 <Tooltip {...tooltipStyle} />
               </PieChart>
             </ResponsiveContainer>
           </div>
           <div className="glass-card p-5">
-            <h4 className="text-sm font-semibold text-foreground mb-4">Severidad de Defectos</h4>
+            <h4 className="text-sm font-display font-bold text-foreground mb-4">Severidad de Defectos</h4>
             <ResponsiveContainer width="100%" height={220}>
               <PieChart>
                 <Pie data={severityData} cx="50%" cy="50%" outerRadius={80} dataKey="value" label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}>
-                  {severityData.map((_, i) => (
-                    <Cell key={i} fill={severityColors[i % severityColors.length]} />
-                  ))}
+                  {severityData.map((_, i) => (<Cell key={i} fill={severityColors[i % severityColors.length]} />))}
                 </Pie>
                 <Tooltip {...tooltipStyle} />
               </PieChart>

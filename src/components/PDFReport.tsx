@@ -1,11 +1,11 @@
 import React from "react";
 import { FileDown, Lightbulb } from "lucide-react";
-import { useTimeStudy } from "@/context/TimeStudyContext";
+import { useTimeStudy, CRANE_STEPS } from "@/context/TimeStudyContext";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 
 const PDFReport: React.FC = () => {
-  const { cycles, defects, qualityChecks } = useTimeStudy();
+  const { cycles, defects, qualityChecks, operators, costConfig } = useTimeStudy();
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -16,63 +16,58 @@ const PDFReport: React.FC = () => {
 
   const generateSuggestions = () => {
     const suggestions: string[] = [];
-    const op1 = cycles.filter((c) => c.operatorId === 1);
-    const op2 = cycles.filter((c) => c.operatorId === 2);
-    const op1Avg = op1.length > 0 ? op1.reduce((s, c) => s + c.duration, 0) / op1.length : 0;
-    const op2Avg = op2.length > 0 ? op2.reduce((s, c) => s + c.duration, 0) / op2.length : 0;
+
+    // Operator comparison
+    if (operators.length >= 2) {
+      const opAvgs = operators.map((op) => {
+        const opCycles = cycles.filter((c) => c.operatorId === op.id);
+        return { name: op.name, avg: opCycles.length > 0 ? opCycles.reduce((s, c) => s + c.duration, 0) / opCycles.length : 0, count: opCycles.length };
+      }).filter((o) => o.count > 0);
+
+      if (opAvgs.length >= 2) {
+        const sorted = opAvgs.sort((a, b) => a.avg - b.avg);
+        if (sorted[sorted.length - 1].avg - sorted[0].avg > 10) {
+          suggestions.push(`${sorted[0].name} es el más eficiente. Programa shadowing para que los demás adopten sus técnicas.`);
+        }
+      }
+    }
+
+    // Quality
     const qualityRate = qualityChecks.length > 0
-      ? (qualityChecks.filter((q) => q.overallPass).length / qualityChecks.length) * 100
-      : 100;
-
-    if (Math.abs(op1Avg - op2Avg) > 10) {
-      const faster = op1Avg < op2Avg ? "Operario 1" : "Operario 2";
-      const slower = op1Avg >= op2Avg ? "Operario 1" : "Operario 2";
-      suggestions.push(
-        `${faster} es significativamente más rápido. Se recomienda que ${faster} capacite a ${slower} en su técnica de plegado.`
-      );
-    }
-
+      ? (qualityChecks.filter((q) => q.overallPass).length / qualityChecks.length) * 100 : 100;
     if (qualityRate < 80) {
-      suggestions.push(
-        "La tasa de calidad está por debajo del 80%. Se recomienda implementar un estándar visual (poka-yoke) para guiar los pliegues críticos."
-      );
+      suggestions.push("Tasa de calidad por debajo del 80%. Implementar Poka-Yoke en los pasos con más defectos.");
     }
 
+    // Defects
     if (defects.length > 0) {
-      const defectMap = new Map<string, number>();
-      defects.forEach((d) => defectMap.set(d.type, (defectMap.get(d.type) ?? 0) + 1));
-      const topDefect = Array.from(defectMap.entries()).sort((a, b) => b[1] - a[1])[0];
-      suggestions.push(
-        `El defecto más frecuente es "${topDefect[0]}" (${topDefect[1]} ocurrencias). Aplicar análisis de causa raíz (5 por qués) para eliminarlo.`
-      );
+      const typeMap = new Map<string, number>();
+      defects.forEach((d) => typeMap.set(d.type, (typeMap.get(d.type) ?? 0) + 1));
+      const top = Array.from(typeMap.entries()).sort((a, b) => b[1] - a[1])[0];
+      suggestions.push(`Defecto más frecuente: "${top[0]}" (${top[1]}x). Aplicar 5 Porqués para causa raíz.`);
     }
 
-    const allTimes = cycles.map((c) => c.duration);
-    if (allTimes.length >= 3) {
-      const stdDev = Math.sqrt(allTimes.reduce((s, t) => s + Math.pow(t - (allTimes.reduce((a, b) => a + b, 0) / allTimes.length), 2), 0) / allTimes.length);
-      if (stdDev > 5) {
-        suggestions.push(
-          `Alta variabilidad en tiempos (σ=${stdDev.toFixed(1)}s). Estandarizar el método de trabajo con instrucciones paso a paso.`
-        );
-      }
+    // Step bottleneck
+    const stepAvgs = CRANE_STEPS.map((step) => {
+      const times = cycles.flatMap((c) => c.steps).filter((s) => s.stepNumber === step.number).map((s) => s.duration);
+      return { ...step, avg: times.length > 0 ? times.reduce((a, b) => a + b, 0) / times.length : 0 };
+    }).filter((s) => s.avg > 0);
+
+    if (stepAvgs.length > 0) {
+      const bottleneck = stepAvgs.reduce((max, s) => s.avg > max.avg ? s : max);
+      suggestions.push(`Cuello de botella: Paso ${bottleneck.number} (${bottleneck.name}) — ${bottleneck.avg.toFixed(1)}s promedio. Priorizar mejora aquí.`);
     }
 
-    if (cycles.length > 3) {
-      const last3 = cycles.slice(-3);
-      const first3 = cycles.slice(0, 3);
-      const last3Avg = last3.reduce((s, c) => s + c.duration, 0) / 3;
-      const first3Avg = first3.reduce((s, c) => s + c.duration, 0) / 3;
-      if (last3Avg < first3Avg) {
-        suggestions.push(
-          "Se observa una tendencia de mejora (curva de aprendizaje). Continuar con la práctica para consolidar los tiempos."
-        );
-      }
+    // Cost
+    const avgHourlyCost = operators.length > 0 ? operators.reduce((s, o) => s + o.hourlyCost, 0) / operators.length : 15000;
+    const avgTime = cycles.length > 0 ? cycles.reduce((s, c) => s + c.duration, 0) / cycles.length : 0;
+    const excess = Math.max(0, avgTime - costConfig.targetCycleTime);
+    if (excess > 0) {
+      const monthlyLoss = excess * (avgHourlyCost / 3600) * costConfig.monthlyProductionTarget;
+      suggestions.push(`Pérdida mensual estimada: $${(monthlyLoss / 1000).toFixed(0)}K COP por exceder el tiempo objetivo en ${excess.toFixed(1)}s/ciclo.`);
     }
 
-    suggestions.push(
-      "Implementar ciclos PDCA (Planificar-Hacer-Verificar-Actuar) para mejora continua del proceso de plegado."
-    );
-
+    suggestions.push("Implementar ciclos PDCA para mejora continua. Medir → Analizar → Mejorar → Estandarizar.");
     return suggestions;
   };
 
@@ -80,15 +75,14 @@ const PDFReport: React.FC = () => {
     const doc = new jsPDF();
     const pageWidth = doc.internal.pageSize.getWidth();
 
-    // Title
-    doc.setFontSize(20);
-    doc.setTextColor(0, 188, 175);
-    doc.text("Reporte de Estudio de Tiempos", pageWidth / 2, 20, { align: "center" });
+    doc.setFontSize(22);
+    doc.setTextColor(0, 200, 220);
+    doc.text("NEXORA.AI — Reporte de Inteligencia Industrial", pageWidth / 2, 20, { align: "center" });
 
     doc.setFontSize(10);
     doc.setTextColor(150, 150, 150);
-    doc.text(`Proceso: Fabricación de Grulla de Origami`, pageWidth / 2, 28, { align: "center" });
-    doc.text(`Fecha: ${new Date().toLocaleDateString("es-ES")}`, pageWidth / 2, 34, { align: "center" });
+    doc.text("Proceso: Grulla de Origami (12 pasos)", pageWidth / 2, 28, { align: "center" });
+    doc.text(`Fecha: ${new Date().toLocaleDateString("es-ES")} | Operarios: ${operators.length} | Ciclos: ${cycles.length}`, pageWidth / 2, 34, { align: "center" });
 
     let y = 45;
 
@@ -97,8 +91,7 @@ const PDFReport: React.FC = () => {
     const avgTime = totalCycles > 0 ? cycles.reduce((s, c) => s + c.duration, 0) / totalCycles : 0;
     const bestTime = totalCycles > 0 ? Math.min(...cycles.map((c) => c.duration)) : 0;
     const qualityRate = qualityChecks.length > 0
-      ? Math.round((qualityChecks.filter((q) => q.overallPass).length / qualityChecks.length) * 100)
-      : 0;
+      ? Math.round((qualityChecks.filter((q) => q.overallPass).length / qualityChecks.length) * 100) : 0;
 
     doc.setFontSize(14);
     doc.setTextColor(60, 60, 60);
@@ -109,22 +102,22 @@ const PDFReport: React.FC = () => {
       startY: y,
       head: [["Métrica", "Valor"]],
       body: [
-        ["Total de Ciclos", totalCycles.toString()],
+        ["Total Ciclos", totalCycles.toString()],
         ["Tiempo Promedio", formatTime(avgTime)],
         ["Mejor Tiempo", formatTime(bestTime)],
-        ["Total Defectos", defects.length.toString()],
-        ["Tasa de Calidad", `${qualityRate}%`],
-        ["Inspecciones Realizadas", qualityChecks.length.toString()],
+        ["Defectos", defects.length.toString()],
+        ["Tasa Calidad", `${qualityRate}%`],
+        ["Operarios", operators.length.toString()],
       ],
       theme: "striped",
-      headStyles: { fillColor: [0, 160, 150] },
+      headStyles: { fillColor: [0, 180, 200] },
       styles: { fontSize: 9 },
     });
+    y = (doc as any).lastAutoTable.finalY + 10;
 
-    y = (doc as any).lastAutoTable.finalY + 12;
-
-    // Cycles table
+    // Cycles
     if (cycles.length > 0) {
+      if (y > 230) { doc.addPage(); y = 20; }
       doc.setFontSize(14);
       doc.setTextColor(60, 60, 60);
       doc.text("Registro de Tiempos", 14, y);
@@ -132,28 +125,27 @@ const PDFReport: React.FC = () => {
 
       autoTable(doc, {
         startY: y,
-        head: [["#", "Operario", "Ciclo", "Tiempo", "Hora"]],
+        head: [["#", "Operario", "Ciclo", "Pasos", "Tiempo Total", "Hora"]],
         body: cycles.map((c, i) => [
           (i + 1).toString(),
           c.operatorName,
           `#${c.cycleNumber}`,
+          `${c.steps.length}/12`,
           formatTime(c.duration),
           c.timestamp.toLocaleTimeString("es-ES"),
         ]),
         theme: "striped",
-        headStyles: { fillColor: [0, 160, 150] },
+        headStyles: { fillColor: [0, 180, 200] },
         styles: { fontSize: 8 },
       });
-
-      y = (doc as any).lastAutoTable.finalY + 12;
+      y = (doc as any).lastAutoTable.finalY + 10;
     }
 
     // Defects
     if (defects.length > 0) {
-      if (y > 240) { doc.addPage(); y = 20; }
+      if (y > 230) { doc.addPage(); y = 20; }
       doc.setFontSize(14);
-      doc.setTextColor(60, 60, 60);
-      doc.text("Registro de Defectos", 14, y);
+      doc.text("Defectos", 14, y);
       y += 8;
 
       autoTable(doc, {
@@ -164,12 +156,11 @@ const PDFReport: React.FC = () => {
         headStyles: { fillColor: [200, 60, 60] },
         styles: { fontSize: 8 },
       });
-
-      y = (doc as any).lastAutoTable.finalY + 12;
+      y = (doc as any).lastAutoTable.finalY + 10;
     }
 
     // Suggestions
-    if (y > 220) { doc.addPage(); y = 20; }
+    if (y > 210) { doc.addPage(); y = 20; }
     const suggestions = generateSuggestions();
     doc.setFontSize(14);
     doc.setTextColor(60, 60, 60);
@@ -185,12 +176,11 @@ const PDFReport: React.FC = () => {
       y += lines.length * 5 + 3;
     });
 
-    // Footer
     doc.setFontSize(7);
     doc.setTextColor(150, 150, 150);
-    doc.text("Generado por TimeStudy App - Mejora Continua", pageWidth / 2, 290, { align: "center" });
+    doc.text("Generado por NEXORA.AI — Industrial Intelligence Platform", pageWidth / 2, 290, { align: "center" });
 
-    doc.save(`reporte_tiempos_${new Date().toISOString().slice(0, 10)}.pdf`);
+    doc.save(`nexora_reporte_${new Date().toISOString().slice(0, 10)}.pdf`);
   };
 
   const suggestions = generateSuggestions();
@@ -204,8 +194,8 @@ const PDFReport: React.FC = () => {
               <FileDown className="w-5 h-5 text-primary" />
             </div>
             <div>
-              <h3 className="font-semibold text-foreground">Generar Reporte PDF</h3>
-              <p className="text-xs text-muted-foreground">Incluye tiempos, calidad, defectos y sugerencias</p>
+              <h3 className="font-display font-bold text-foreground">Reporte PDF Ejecutivo</h3>
+              <p className="text-xs text-muted-foreground">Incluye tiempos, costos, calidad, defectos y sugerencias AI</p>
             </div>
           </div>
           <button
@@ -217,14 +207,13 @@ const PDFReport: React.FC = () => {
           </button>
         </div>
 
-        {/* Preview suggestions */}
         <div className="space-y-3">
           <div className="flex items-center gap-2">
             <Lightbulb className="w-4 h-4 text-warning" />
-            <h4 className="text-sm font-semibold text-foreground">Sugerencias de Mejora</h4>
+            <h4 className="text-sm font-display font-bold text-foreground">Sugerencias de Mejora</h4>
           </div>
           {suggestions.map((s, i) => (
-            <div key={i} className="flex gap-3 p-3 rounded-lg bg-muted/30 border border-border/50">
+            <div key={i} className="flex gap-3 p-3 rounded-lg bg-muted/20 border border-border/30">
               <span className="text-xs font-mono text-primary font-bold mt-0.5">{i + 1}.</span>
               <p className="text-sm text-muted-foreground leading-relaxed">{s}</p>
             </div>

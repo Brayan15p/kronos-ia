@@ -61,7 +61,7 @@ const QualityModule: React.FC = () => {
             <ClipboardCheck className="w-5 h-5 text-success" />
           </div>
           <div>
-            <h3 className="font-semibold text-foreground">Control de Calidad</h3>
+            <h3 className="font-display font-bold text-foreground">Control de Calidad</h3>
             <p className="text-xs text-muted-foreground">Inspección de grulla de origami</p>
           </div>
         </div>
@@ -71,13 +71,12 @@ const QualityModule: React.FC = () => {
         </div>
       </div>
 
-      {/* Select cycle */}
       <div>
         <label className="text-xs text-muted-foreground uppercase tracking-wider font-medium">Seleccionar ciclo</label>
         <select
           value={selectedCycleId}
           onChange={(e) => setSelectedCycleId(e.target.value)}
-          className="w-full mt-1 px-3 py-2 rounded-lg bg-muted/50 border border-border text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+          className="select-glass mt-1"
         >
           <option value="">-- Seleccionar --</option>
           {uncheckedCycles.map((c) => (
@@ -88,7 +87,6 @@ const QualityModule: React.FC = () => {
         </select>
       </div>
 
-      {/* Checklist */}
       <div className="space-y-2">
         {QUALITY_CRITERIA.map((name) => (
           <button
@@ -97,7 +95,7 @@ const QualityModule: React.FC = () => {
             className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all ${
               checks[name]
                 ? "bg-success/10 border border-success/30"
-                : "bg-muted/30 border border-transparent hover:border-border"
+                : "bg-muted/20 border border-transparent hover:border-border/30"
             }`}
           >
             {checks[name] ? (
@@ -105,9 +103,7 @@ const QualityModule: React.FC = () => {
             ) : (
               <XCircle className="w-4 h-4 text-muted-foreground flex-shrink-0" />
             )}
-            <span className={checks[name] ? "text-foreground" : "text-muted-foreground"}>
-              {name}
-            </span>
+            <span className={checks[name] ? "text-foreground" : "text-muted-foreground"}>{name}</span>
           </button>
         ))}
       </div>
@@ -120,22 +116,21 @@ const QualityModule: React.FC = () => {
         Guardar Inspección
       </button>
 
-      {/* Recent checks */}
       {qualityChecks.length > 0 && (
         <div className="space-y-1">
-          <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Últimas inspecciones</p>
+          <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-semibold">Últimas inspecciones</p>
           {qualityChecks.slice(-5).reverse().map((q) => {
             const cycle = cycles.find((c) => c.id === q.cycleId);
             const passCount = q.criteria.filter((c) => c.passed).length;
             return (
-              <div key={q.id} className="flex items-center justify-between text-sm py-1.5 px-2 rounded bg-muted/30">
+              <div key={q.id} className="flex items-center justify-between text-sm py-1.5 px-2 rounded bg-muted/20">
                 <span className="text-muted-foreground">{cycle?.operatorName} #{cycle?.cycleNumber}</span>
                 <div className="flex items-center gap-2">
                   <span className="font-mono text-xs text-muted-foreground">{passCount}/{q.criteria.length}</span>
                   {q.overallPass ? (
-                    <span className="text-xs px-2 py-0.5 rounded-full bg-success/20 text-success font-medium">OK</span>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-success/20 text-success font-medium">OK</span>
                   ) : (
-                    <span className="text-xs px-2 py-0.5 rounded-full bg-destructive/20 text-destructive font-medium">FALLA</span>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-destructive/20 text-destructive font-medium">FALLA</span>
                   )}
                 </div>
               </div>
