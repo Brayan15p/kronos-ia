@@ -58,7 +58,7 @@ const DefectsModule: React.FC = () => {
             <AlertTriangle className="w-5 h-5 text-destructive" />
           </div>
           <div>
-            <h3 className="font-semibold text-foreground">Registro de Defectos</h3>
+            <h3 className="font-display font-bold text-foreground">Registro de Defectos</h3>
             <p className="text-xs text-muted-foreground">Categorización de fallas</p>
           </div>
         </div>
@@ -68,35 +68,22 @@ const DefectsModule: React.FC = () => {
         </div>
       </div>
 
-      {/* Form */}
       <div className="space-y-3">
         <div>
           <label className="text-xs text-muted-foreground uppercase tracking-wider font-medium">Ciclo</label>
-          <select
-            value={selectedCycleId}
-            onChange={(e) => setSelectedCycleId(e.target.value)}
-            className="w-full mt-1 px-3 py-2 rounded-lg bg-muted/50 border border-border text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-          >
+          <select value={selectedCycleId} onChange={(e) => setSelectedCycleId(e.target.value)} className="select-glass mt-1">
             <option value="">-- Seleccionar --</option>
             {cycles.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.operatorName} - Ciclo #{c.cycleNumber}
-              </option>
+              <option key={c.id} value={c.id}>{c.operatorName} - Ciclo #{c.cycleNumber}</option>
             ))}
           </select>
         </div>
 
         <div>
           <label className="text-xs text-muted-foreground uppercase tracking-wider font-medium">Tipo de defecto</label>
-          <select
-            value={defectType}
-            onChange={(e) => setDefectType(e.target.value)}
-            className="w-full mt-1 px-3 py-2 rounded-lg bg-muted/50 border border-border text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-          >
+          <select value={defectType} onChange={(e) => setDefectType(e.target.value)} className="select-glass mt-1">
             <option value="">-- Seleccionar --</option>
-            {DEFECT_TYPES.map((t) => (
-              <option key={t} value={t}>{t}</option>
-            ))}
+            {DEFECT_TYPES.map((t) => (<option key={t} value={t}>{t}</option>))}
           </select>
         </div>
 
@@ -108,7 +95,7 @@ const DefectsModule: React.FC = () => {
                 key={s}
                 onClick={() => setSeverity(s)}
                 className={`flex-1 px-3 py-2 rounded-lg text-xs font-semibold uppercase transition-all ${
-                  severity === s ? SEVERITY_COLORS[s] + " border border-current/20" : "bg-muted/30 text-muted-foreground"
+                  severity === s ? SEVERITY_COLORS[s] + " border border-current/20" : "bg-muted/20 text-muted-foreground"
                 }`}
               >
                 {s}
@@ -123,7 +110,7 @@ const DefectsModule: React.FC = () => {
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             placeholder="Detalle del defecto..."
-            className="w-full mt-1 px-3 py-2 rounded-lg bg-muted/50 border border-border text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-primary resize-none h-16"
+            className="input-glass mt-1 resize-none h-16"
           />
         </div>
       </div>
@@ -136,10 +123,9 @@ const DefectsModule: React.FC = () => {
         <Plus className="w-4 h-4" /> Registrar Defecto
       </button>
 
-      {/* Pareto-style summary */}
       {defectsByType.length > 0 && (
         <div className="space-y-2">
-          <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Pareto de defectos</p>
+          <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-semibold">Pareto de defectos</p>
           {defectsByType.map((d) => {
             const pct = defects.length > 0 ? (d.count / defects.length) * 100 : 0;
             return (
@@ -148,11 +134,8 @@ const DefectsModule: React.FC = () => {
                   <span className="text-muted-foreground">{d.type}</span>
                   <span className="font-mono text-foreground">{d.count} ({Math.round(pct)}%)</span>
                 </div>
-                <div className="w-full h-1.5 rounded-full bg-muted/50">
-                  <div
-                    className="h-full rounded-full bg-destructive/70 transition-all"
-                    style={{ width: `${pct}%` }}
-                  />
+                <div className="w-full h-1.5 rounded-full bg-muted/30">
+                  <div className="h-full rounded-full bg-destructive/70 transition-all" style={{ width: `${pct}%` }} />
                 </div>
               </div>
             );
