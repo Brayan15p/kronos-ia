@@ -1,6 +1,6 @@
 import React from "react";
 import { DollarSign, TrendingDown, AlertTriangle, Target } from "lucide-react";
-import { useTimeStudy, CRANE_STEPS } from "@/context/TimeStudyContext";
+import { useTimeStudy } from "@/context/TimeStudyContext";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 
 const CostAnalysis: React.FC = () => {
