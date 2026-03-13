@@ -25,11 +25,13 @@ interface OperatorTimerProps {
 }
 
 const OperatorStepTimer: React.FC<OperatorTimerProps> = ({ operatorId, operatorName }) => {
-  const { cycles, addCycle, removeCycle, steps } = useTimeStudy();
+  const { cycles, addCycle, removeCycle, updateCycle, steps } = useTimeStudy();
   const [currentStep, setCurrentStep] = useState(0);
   const [isRunning, setIsRunning] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [stepTimings, setStepTimings] = useState<StepTiming[]>([]);
+  const [editingCycleId, setEditingCycleId] = useState<string | null>(null);
+  const [editStepTimes, setEditStepTimes] = useState<string[]>([]);
   const intervalRef = useRef<number | null>(null);
   const startTimeRef = useRef<number>(0);
 
