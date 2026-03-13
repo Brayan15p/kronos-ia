@@ -189,6 +189,8 @@ const AppContent: React.FC = () => {
         <main className="flex-1 overflow-y-auto scroll-thin p-6">
           <div className="max-w-7xl mx-auto animate-fade-in">
             {activeTab === "timer" && <StepTimer />}
+            {activeTab === "manual" && <ManualTimeEntry />}
+            {activeTab === "steps" && <div className="max-w-2xl mx-auto"><StepsConfigPanel /></div>}
             {activeTab === "quality" && <div className="max-w-xl mx-auto"><QualityModule /></div>}
             {activeTab === "defects" && <div className="max-w-xl mx-auto"><DefectsModule /></div>}
             {activeTab === "cost" && <CostAnalysis />}
