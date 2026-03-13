@@ -18,10 +18,12 @@ import IncentivesModule from "@/components/IncentivesModule";
 import StepsConfigPanel from "@/components/StepsConfigPanel";
 import ManualTimeEntry from "@/components/ManualTimeEntry";
 
-type TabId = "timer" | "cost" | "montecarlo" | "dashboard" | "fatigue" | "quality" | "defects" | "optimizer" | "incentives" | "report";
+type TabId = "timer" | "manual" | "steps" | "cost" | "montecarlo" | "dashboard" | "fatigue" | "quality" | "defects" | "optimizer" | "incentives" | "report";
 
 const TABS: { id: TabId; label: string; icon: React.ElementType; category: string }[] = [
   { id: "timer", label: "Cronómetro", icon: Timer, category: "Operaciones" },
+  { id: "manual", label: "Entrada Manual", icon: PenLine, category: "Operaciones" },
+  { id: "steps", label: "Config. Pasos", icon: Settings2, category: "Operaciones" },
   { id: "quality", label: "Calidad", icon: ClipboardCheck, category: "Operaciones" },
   { id: "defects", label: "Defectos", icon: AlertTriangle, category: "Operaciones" },
   { id: "cost", label: "Fuga de Dinero", icon: DollarSign, category: "Inteligencia" },
