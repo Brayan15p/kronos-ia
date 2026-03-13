@@ -71,7 +71,7 @@ const AppContent: React.FC = () => {
             </div>
             {sidebarOpen && (
               <div className="min-w-0">
-                <h1 className="text-base font-bold font-display text-gradient-hero tracking-tight">NEXORA.AI</h1>
+                <h1 className="text-base font-bold font-display text-gradient-hero tracking-tight">KRONOS.AI</h1>
                 <p className="text-[10px] text-muted-foreground truncate">Industrial Intelligence</p>
               </div>
             )}
