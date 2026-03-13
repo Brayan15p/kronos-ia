@@ -1,6 +1,16 @@
 import React, { useState, useRef, useCallback } from "react";
-import { Play, Pause, RotateCcw, Save, SkipForward, Trash2, User, CheckCircle2 } from "lucide-react";
+import { Play, Pause, RotateCcw, Save, SkipForward, Trash2, User, CheckCircle2, Edit2, Check, X } from "lucide-react";
 import { useTimeStudy, CycleRecord, StepTiming } from "@/context/TimeStudyContext";
+
+const parseTimeInput = (val: string): number => {
+  const parts = val.split(":");
+  if (parts.length === 1) return parseFloat(parts[0]) || 0;
+  const mins = parseInt(parts[0]) || 0;
+  const secParts = parts[1].split(".");
+  const secs = parseInt(secParts[0]) || 0;
+  const ms = secParts[1] ? parseInt(secParts[1]) / 100 : 0;
+  return mins * 60 + secs + ms;
+};
 
 const formatTime = (seconds: number) => {
   const mins = Math.floor(seconds / 60);
