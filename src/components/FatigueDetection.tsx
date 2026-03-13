@@ -6,7 +6,8 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 const CHART_COLORS = ["hsl(185,100%,50%)", "hsl(265,80%,62%)", "hsl(155,70%,45%)", "hsl(40,95%,55%)", "hsl(0,80%,58%)"];
 
 const FatigueDetection: React.FC = () => {
-  const { cycles, operators } = useTimeStudy();
+  const { cycles, operators, steps } = useTimeStudy();
+  const CRANE_STEPS = steps;
 
   const tooltipStyle = {
     contentStyle: {

@@ -1,6 +1,6 @@
 import React, { useMemo } from "react";
 import { Zap, Lightbulb, CheckCircle2, AlertTriangle, TrendingDown, Brain, Target } from "lucide-react";
-import { useTimeStudy, CRANE_STEPS } from "@/context/TimeStudyContext";
+import { useTimeStudy } from "@/context/TimeStudyContext";
 
 interface Suggestion {
   type: "critical" | "improvement" | "insight";

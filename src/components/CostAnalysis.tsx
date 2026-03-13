@@ -4,7 +4,8 @@ import { useTimeStudy } from "@/context/TimeStudyContext";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 
 const CostAnalysis: React.FC = () => {
-  const { cycles, operators, costConfig, updateCostConfig } = useTimeStudy();
+  const { cycles, operators, costConfig, updateCostConfig, steps } = useTimeStudy();
+  const CRANE_STEPS = steps;
 
   const avgHourlyCost = operators.length > 0
     ? operators.reduce((s, o) => s + o.hourlyCost, 0) / operators.length

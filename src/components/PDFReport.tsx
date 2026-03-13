@@ -1,6 +1,6 @@
 import React from "react";
 import { FileDown, Lightbulb } from "lucide-react";
-import { useTimeStudy, CRANE_STEPS } from "@/context/TimeStudyContext";
+import { useTimeStudy } from "@/context/TimeStudyContext";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 
