@@ -1,6 +1,6 @@
 import React, { useState, useRef, useCallback } from "react";
 import { Play, Pause, RotateCcw, Save, SkipForward, Trash2, User, CheckCircle2 } from "lucide-react";
-import { useTimeStudy, CycleRecord, StepTiming, CRANE_STEPS } from "@/context/TimeStudyContext";
+import { useTimeStudy, CycleRecord, StepTiming } from "@/context/TimeStudyContext";
 
 const formatTime = (seconds: number) => {
   const mins = Math.floor(seconds / 60);
@@ -15,7 +15,7 @@ interface OperatorTimerProps {
 }
 
 const OperatorStepTimer: React.FC<OperatorTimerProps> = ({ operatorId, operatorName }) => {
-  const { cycles, addCycle, removeCycle } = useTimeStudy();
+  const { cycles, addCycle, removeCycle, steps } = useTimeStudy();
   const [currentStep, setCurrentStep] = useState(0);
   const [isRunning, setIsRunning] = useState(false);
   const [elapsed, setElapsed] = useState(0);
@@ -44,18 +44,17 @@ const OperatorStepTimer: React.FC<OperatorTimerProps> = ({ operatorId, operatorN
     if (elapsed < 0.1) return;
     const timing: StepTiming = {
       stepNumber: currentStep + 1,
-      stepName: CRANE_STEPS[currentStep].name,
+      stepName: steps[currentStep].name,
       duration: elapsed,
       timestamp: new Date(),
     };
     setStepTimings((prev) => [...prev, timing]);
 
-    if (currentStep < CRANE_STEPS.length - 1) {
+    if (currentStep < steps.length - 1) {
       setCurrentStep((prev) => prev + 1);
       setElapsed(0);
       startTimeRef.current = Date.now();
     } else {
-      // All steps done — save cycle
       if (intervalRef.current) clearInterval(intervalRef.current);
       setIsRunning(false);
       const allTimings = [...stepTimings, timing];
@@ -77,14 +76,14 @@ const OperatorStepTimer: React.FC<OperatorTimerProps> = ({ operatorId, operatorN
       setElapsed(0);
       setStepTimings([]);
     }
-  }, [elapsed, currentStep, stepTimings, operatorId, operatorName, cycleCount, addCycle]);
+  }, [elapsed, currentStep, stepTimings, operatorId, operatorName, cycleCount, addCycle, steps]);
 
   const quickSave = useCallback(() => {
     if (elapsed < 0.3 && stepTimings.length === 0) return;
     if (intervalRef.current) clearInterval(intervalRef.current);
     setIsRunning(false);
     const currentTiming: StepTiming = elapsed > 0.1
-      ? { stepNumber: currentStep + 1, stepName: CRANE_STEPS[currentStep].name, duration: elapsed, timestamp: new Date() }
+      ? { stepNumber: currentStep + 1, stepName: steps[currentStep].name, duration: elapsed, timestamp: new Date() }
       : null as any;
     const allTimings = currentTiming ? [...stepTimings, currentTiming] : stepTimings;
     if (allTimings.length === 0) return;
@@ -105,7 +104,7 @@ const OperatorStepTimer: React.FC<OperatorTimerProps> = ({ operatorId, operatorN
     setCurrentStep(0);
     setElapsed(0);
     setStepTimings([]);
-  }, [elapsed, currentStep, stepTimings, operatorId, operatorName, cycleCount, addCycle]);
+  }, [elapsed, currentStep, stepTimings, operatorId, operatorName, cycleCount, addCycle, steps]);
 
   const reset = useCallback(() => {
     setIsRunning(false);
@@ -119,11 +118,11 @@ const OperatorStepTimer: React.FC<OperatorTimerProps> = ({ operatorId, operatorN
     ? operatorCycles.reduce((s, c) => s + c.duration, 0) / operatorCycles.length
     : 0;
 
-  const step = CRANE_STEPS[currentStep];
+  const step = steps[currentStep];
+  if (!step) return null;
 
   return (
     <div className="glass-card p-5 space-y-4 animate-fade-in">
-      {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-lg flex items-center justify-center bg-primary/10 border border-primary/20">
@@ -142,31 +141,24 @@ const OperatorStepTimer: React.FC<OperatorTimerProps> = ({ operatorId, operatorN
         </div>
       </div>
 
-      {/* Current Step */}
       <div className="text-center space-y-1">
         <span className="text-2xl">{step.emoji}</span>
-        <p className="text-xs font-medium text-primary">Paso {step.number}/12</p>
+        <p className="text-xs font-medium text-primary">Paso {step.number}/{steps.length}</p>
         <p className="text-sm text-foreground font-medium">{step.name}</p>
         <div className="timer-step-display">{formatTime(elapsed)}</div>
       </div>
 
-      {/* Progress bar */}
       <div className="flex gap-0.5">
-        {CRANE_STEPS.map((s, i) => (
+        {steps.map((s, i) => (
           <div
             key={i}
             className={`h-1.5 flex-1 rounded-full transition-all ${
-              i < currentStep
-                ? "bg-success/60"
-                : i === currentStep
-                ? "bg-primary/80"
-                : "bg-muted/40"
+              i < currentStep ? "bg-success/60" : i === currentStep ? "bg-primary/80" : "bg-muted/40"
             }`}
           />
         ))}
       </div>
 
-      {/* Controls */}
       <div className="flex items-center justify-center gap-2 flex-wrap">
         {!isRunning ? (
           <button onClick={start} className="btn-primary-glass flex items-center gap-1.5 text-xs">
@@ -179,7 +171,7 @@ const OperatorStepTimer: React.FC<OperatorTimerProps> = ({ operatorId, operatorN
         )}
         <button onClick={nextStep} disabled={elapsed < 0.1} className="btn-accent-glass flex items-center gap-1.5 text-xs disabled:opacity-40">
           <SkipForward className="w-3.5 h-3.5" />
-          {currentStep < CRANE_STEPS.length - 1 ? "Siguiente" : "Finalizar"}
+          {currentStep < steps.length - 1 ? "Siguiente" : "Finalizar"}
         </button>
         <button onClick={reset} className="btn-secondary-glass flex items-center gap-1.5 text-xs">
           <RotateCcw className="w-3.5 h-3.5" />
@@ -189,19 +181,17 @@ const OperatorStepTimer: React.FC<OperatorTimerProps> = ({ operatorId, operatorN
         </button>
       </div>
 
-      {/* Step timings done */}
       {stepTimings.length > 0 && (
         <div className="space-y-1 max-h-28 overflow-y-auto scroll-thin">
           {stepTimings.map((t, i) => (
             <div key={i} className="flex items-center justify-between text-xs py-1 px-2 rounded bg-success/5 border border-success/10">
-              <span className="text-muted-foreground">{CRANE_STEPS[i].emoji} {t.stepName}</span>
+              <span className="text-muted-foreground">{steps[i]?.emoji} {t.stepName}</span>
               <span className="font-mono text-success">{formatTime(t.duration)}</span>
             </div>
           ))}
         </div>
       )}
 
-      {/* Recent cycles */}
       {operatorCycles.length > 0 && (
         <div className="space-y-1">
           <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-semibold">Últimos ciclos</p>
@@ -233,7 +223,7 @@ const StepTimer: React.FC = () => {
       <div className="glass-card p-4 flex items-center gap-3">
         <CheckCircle2 className="w-5 h-5 text-primary" />
         <div>
-          <p className="text-sm font-display font-bold text-foreground">Cronómetro de 12 Pasos — Grulla de Origami</p>
+          <p className="text-sm font-display font-bold text-foreground">Cronómetro por Pasos</p>
           <p className="text-xs text-muted-foreground">Mide cada paso del proceso para identificar cuellos de botella</p>
         </div>
       </div>
