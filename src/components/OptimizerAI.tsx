@@ -11,7 +11,8 @@ interface Suggestion {
 }
 
 const OptimizerAI: React.FC = () => {
-  const { cycles, defects, qualityChecks, operators, costConfig } = useTimeStudy();
+  const { cycles, defects, qualityChecks, operators, costConfig, steps } = useTimeStudy();
+  const CRANE_STEPS = steps;
 
   const suggestions = useMemo<Suggestion[]>(() => {
     const result: Suggestion[] = [];
