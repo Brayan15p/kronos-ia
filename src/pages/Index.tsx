@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import {
   Timer, ClipboardCheck, AlertTriangle, BarChart3, FileDown,
   Trash2, DollarSign, Dice5, Brain, TrendingUp, Plus, X, Users,
-  Zap, ChevronLeft, ChevronRight,
+  Zap, ChevronLeft, ChevronRight, Settings2, PenLine, Edit2,
 } from "lucide-react";
 import { TimeStudyProvider, useTimeStudy } from "@/context/TimeStudyContext";
 import StepTimer from "@/components/StepTimer";
@@ -15,6 +15,8 @@ import MonteCarloSimulator from "@/components/MonteCarloSimulator";
 import FatigueDetection from "@/components/FatigueDetection";
 import OptimizerAI from "@/components/OptimizerAI";
 import IncentivesModule from "@/components/IncentivesModule";
+import StepsConfigPanel from "@/components/StepsConfigPanel";
+import ManualTimeEntry from "@/components/ManualTimeEntry";
 
 type TabId = "timer" | "cost" | "montecarlo" | "dashboard" | "fatigue" | "quality" | "defects" | "optimizer" | "incentives" | "report";
 
