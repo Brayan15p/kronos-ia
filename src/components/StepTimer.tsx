@@ -208,17 +208,60 @@ const OperatorStepTimer: React.FC<OperatorTimerProps> = ({ operatorId, operatorN
         <div className="space-y-1">
           <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-semibold">Últimos ciclos</p>
           {operatorCycles.slice(-3).reverse().map((c) => (
-            <div key={c.id} className="flex items-center justify-between text-xs py-1.5 px-2 rounded bg-muted/20">
-              <div className="flex items-center gap-2">
-                <span className="text-muted-foreground font-mono">#{c.cycleNumber}</span>
-                <span className="text-[10px] text-muted-foreground">{c.steps.length} pasos</span>
+            <div key={c.id} className="space-y-1">
+              <div className="flex items-center justify-between text-xs py-1.5 px-2 rounded bg-muted/20">
+                <div className="flex items-center gap-2">
+                  <span className="text-muted-foreground font-mono">#{c.cycleNumber}</span>
+                  <span className="text-[10px] text-muted-foreground">{c.steps.length} pasos</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <span className="font-mono text-foreground">{formatTime(c.duration)}</span>
+                  {editingCycleId === c.id ? (
+                    <>
+                      <button onClick={() => {
+                        const newSteps: StepTiming[] = steps.map((step, i) => ({
+                          stepNumber: step.number,
+                          stepName: step.name,
+                          duration: parseTimeInput(editStepTimes[i] || "0"),
+                          timestamp: new Date(),
+                        }));
+                        updateCycle(c.id, { steps: newSteps });
+                        setEditingCycleId(null);
+                      }} className="text-success hover:text-success/80 p-0.5"><Check className="w-3 h-3" /></button>
+                      <button onClick={() => setEditingCycleId(null)} className="text-muted-foreground hover:text-foreground p-0.5"><X className="w-3 h-3" /></button>
+                    </>
+                  ) : (
+                    <button onClick={() => {
+                      setEditingCycleId(c.id);
+                      setEditStepTimes(steps.map((step) => {
+                        const found = c.steps.find((s) => s.stepNumber === step.number);
+                        return found ? formatTime(found.duration) : "0";
+                      }));
+                    }} className="text-muted-foreground hover:text-primary p-0.5"><Edit2 className="w-3 h-3" /></button>
+                  )}
+                  <button onClick={() => removeCycle(c.id)} className="text-destructive/50 hover:text-destructive p-0.5">
+                    <Trash2 className="w-3 h-3" />
+                  </button>
+                </div>
               </div>
-              <div className="flex items-center gap-2">
-                <span className="font-mono text-foreground">{formatTime(c.duration)}</span>
-                <button onClick={() => removeCycle(c.id)} className="text-destructive/50 hover:text-destructive p-0.5">
-                  <Trash2 className="w-3 h-3" />
-                </button>
-              </div>
+              {editingCycleId === c.id && (
+                <div className="grid grid-cols-2 gap-1 px-2 pb-1">
+                  {steps.map((step, i) => (
+                    <div key={step.number} className="flex items-center gap-1">
+                      <span className="text-[9px] text-muted-foreground truncate w-16">{step.emoji}{step.name.slice(0,8)}</span>
+                      <input
+                        value={editStepTimes[i] || ""}
+                        onChange={(e) => {
+                          const arr = [...editStepTimes];
+                          arr[i] = e.target.value;
+                          setEditStepTimes(arr);
+                        }}
+                        className="input-glass text-[10px] py-0.5 font-mono flex-1"
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           ))}
         </div>
