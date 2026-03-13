@@ -1,6 +1,6 @@
 import React from "react";
 import { Brain, TrendingUp, Users, AlertTriangle, Award } from "lucide-react";
-import { useTimeStudy, CRANE_STEPS } from "@/context/TimeStudyContext";
+import { useTimeStudy } from "@/context/TimeStudyContext";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Cell } from "recharts";
 
 const CHART_COLORS = ["hsl(185,100%,50%)", "hsl(265,80%,62%)", "hsl(155,70%,45%)", "hsl(40,95%,55%)", "hsl(0,80%,58%)"];
