@@ -1,11 +1,12 @@
 import React from "react";
 import { FileDown, Lightbulb } from "lucide-react";
-import { useTimeStudy, CRANE_STEPS } from "@/context/TimeStudyContext";
+import { useTimeStudy } from "@/context/TimeStudyContext";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 
 const PDFReport: React.FC = () => {
-  const { cycles, defects, qualityChecks, operators, costConfig } = useTimeStudy();
+  const { cycles, defects, qualityChecks, operators, costConfig, steps } = useTimeStudy();
+  const CRANE_STEPS = steps;
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);

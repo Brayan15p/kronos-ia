@@ -1,6 +1,6 @@
 import React, { useMemo } from "react";
 import { Zap, Lightbulb, CheckCircle2, AlertTriangle, TrendingDown, Brain, Target } from "lucide-react";
-import { useTimeStudy, CRANE_STEPS } from "@/context/TimeStudyContext";
+import { useTimeStudy } from "@/context/TimeStudyContext";
 
 interface Suggestion {
   type: "critical" | "improvement" | "insight";
@@ -11,7 +11,8 @@ interface Suggestion {
 }
 
 const OptimizerAI: React.FC = () => {
-  const { cycles, defects, qualityChecks, operators, costConfig } = useTimeStudy();
+  const { cycles, defects, qualityChecks, operators, costConfig, steps } = useTimeStudy();
+  const CRANE_STEPS = steps;
 
   const suggestions = useMemo<Suggestion[]>(() => {
     const result: Suggestion[] = [];

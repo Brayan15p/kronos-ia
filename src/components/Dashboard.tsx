@@ -1,12 +1,13 @@
 import React from "react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell, AreaChart, Area } from "recharts";
 import { Activity, TrendingDown, Target, Clock, Users, AlertTriangle } from "lucide-react";
-import { useTimeStudy, CRANE_STEPS } from "@/context/TimeStudyContext";
+import { useTimeStudy } from "@/context/TimeStudyContext";
 
 const CHART_COLORS = ["hsl(185,100%,50%)", "hsl(265,80%,62%)", "hsl(40,95%,55%)", "hsl(0,80%,58%)", "hsl(155,70%,45%)"];
 
 const Dashboard: React.FC = () => {
-  const { cycles, defects, qualityChecks, operators, costConfig } = useTimeStudy();
+  const { cycles, defects, qualityChecks, operators, costConfig, steps } = useTimeStudy();
+  const CRANE_STEPS = steps;
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);

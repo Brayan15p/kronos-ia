@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import {
   Timer, ClipboardCheck, AlertTriangle, BarChart3, FileDown,
   Trash2, DollarSign, Dice5, Brain, TrendingUp, Plus, X, Users,
-  Zap, ChevronLeft, ChevronRight,
+  Zap, ChevronLeft, ChevronRight, Settings2, PenLine, Edit2,
 } from "lucide-react";
 import { TimeStudyProvider, useTimeStudy } from "@/context/TimeStudyContext";
 import StepTimer from "@/components/StepTimer";
@@ -15,11 +15,15 @@ import MonteCarloSimulator from "@/components/MonteCarloSimulator";
 import FatigueDetection from "@/components/FatigueDetection";
 import OptimizerAI from "@/components/OptimizerAI";
 import IncentivesModule from "@/components/IncentivesModule";
+import StepsConfigPanel from "@/components/StepsConfigPanel";
+import ManualTimeEntry from "@/components/ManualTimeEntry";
 
-type TabId = "timer" | "cost" | "montecarlo" | "dashboard" | "fatigue" | "quality" | "defects" | "optimizer" | "incentives" | "report";
+type TabId = "timer" | "manual" | "steps" | "cost" | "montecarlo" | "dashboard" | "fatigue" | "quality" | "defects" | "optimizer" | "incentives" | "report";
 
 const TABS: { id: TabId; label: string; icon: React.ElementType; category: string }[] = [
   { id: "timer", label: "Cronómetro", icon: Timer, category: "Operaciones" },
+  { id: "manual", label: "Entrada Manual", icon: PenLine, category: "Operaciones" },
+  { id: "steps", label: "Config. Pasos", icon: Settings2, category: "Operaciones" },
   { id: "quality", label: "Calidad", icon: ClipboardCheck, category: "Operaciones" },
   { id: "defects", label: "Defectos", icon: AlertTriangle, category: "Operaciones" },
   { id: "cost", label: "Fuga de Dinero", icon: DollarSign, category: "Inteligencia" },
@@ -67,7 +71,7 @@ const AppContent: React.FC = () => {
             </div>
             {sidebarOpen && (
               <div className="min-w-0">
-                <h1 className="text-base font-bold font-display text-gradient-hero tracking-tight">NEXORA.AI</h1>
+                <h1 className="text-base font-bold font-display text-gradient-hero tracking-tight">KRONOS.AI</h1>
                 <p className="text-[10px] text-muted-foreground truncate">Industrial Intelligence</p>
               </div>
             )}
@@ -185,6 +189,8 @@ const AppContent: React.FC = () => {
         <main className="flex-1 overflow-y-auto scroll-thin p-6">
           <div className="max-w-7xl mx-auto animate-fade-in">
             {activeTab === "timer" && <StepTimer />}
+            {activeTab === "manual" && <ManualTimeEntry />}
+            {activeTab === "steps" && <div className="max-w-2xl mx-auto"><StepsConfigPanel /></div>}
             {activeTab === "quality" && <div className="max-w-xl mx-auto"><QualityModule /></div>}
             {activeTab === "defects" && <div className="max-w-xl mx-auto"><DefectsModule /></div>}
             {activeTab === "cost" && <CostAnalysis />}
