@@ -3,8 +3,10 @@ import {
   Timer, ClipboardCheck, AlertTriangle, BarChart3, FileDown,
   Trash2, DollarSign, Dice5, Brain, TrendingUp, Plus, X, Users,
   Zap, ChevronLeft, ChevronRight, Settings2, PenLine, Edit2,
+  Sun, Volume2, Box, Shield, Lightbulb,
 } from "lucide-react";
 import { TimeStudyProvider, useTimeStudy } from "@/context/TimeStudyContext";
+import { SSTProvider } from "@/context/SSTContext";
 import StepTimer from "@/components/StepTimer";
 import QualityModule from "@/components/QualityModule";
 import DefectsModule from "@/components/DefectsModule";
@@ -17,8 +19,13 @@ import OptimizerAI from "@/components/OptimizerAI";
 import IncentivesModule from "@/components/IncentivesModule";
 import StepsConfigPanel from "@/components/StepsConfigPanel";
 import ManualTimeEntry from "@/components/ManualTimeEntry";
+import EnvironmentalModule from "@/components/EnvironmentalModule";
+import Workspace3DModel from "@/components/Workspace3DModel";
+import SSTDashboard from "@/components/SSTDashboard";
+import ErgonomicCostAnalysis from "@/components/ErgonomicCostAnalysis";
+import SSTRecommendations from "@/components/SSTRecommendations";
 
-type TabId = "timer" | "manual" | "steps" | "cost" | "montecarlo" | "dashboard" | "fatigue" | "quality" | "defects" | "optimizer" | "incentives" | "report";
+type TabId = "timer" | "manual" | "steps" | "cost" | "montecarlo" | "dashboard" | "fatigue" | "quality" | "defects" | "optimizer" | "incentives" | "report" | "environment" | "workspace3d" | "sst-dashboard" | "ergo-cost" | "sst-ai";
 
 const TABS: { id: TabId; label: string; icon: React.ElementType; category: string }[] = [
   { id: "timer", label: "Cronómetro", icon: Timer, category: "Operaciones" },
@@ -26,6 +33,11 @@ const TABS: { id: TabId; label: string; icon: React.ElementType; category: strin
   { id: "steps", label: "Config. Pasos", icon: Settings2, category: "Operaciones" },
   { id: "quality", label: "Calidad", icon: ClipboardCheck, category: "Operaciones" },
   { id: "defects", label: "Defectos", icon: AlertTriangle, category: "Operaciones" },
+  { id: "environment", label: "Ambiente", icon: Sun, category: "Ergonomía SST" },
+  { id: "workspace3d", label: "Modelo 3D", icon: Box, category: "Ergonomía SST" },
+  { id: "sst-dashboard", label: "Dashboard SST", icon: Shield, category: "Ergonomía SST" },
+  { id: "ergo-cost", label: "Costos Ergonómicos", icon: DollarSign, category: "Ergonomía SST" },
+  { id: "sst-ai", label: "IA SST", icon: Brain, category: "Ergonomía SST" },
   { id: "cost", label: "Fuga de Dinero", icon: DollarSign, category: "Inteligencia" },
   { id: "montecarlo", label: "Monte Carlo", icon: Dice5, category: "Inteligencia" },
   { id: "fatigue", label: "Fatiga & Training", icon: Brain, category: "Inteligencia" },
