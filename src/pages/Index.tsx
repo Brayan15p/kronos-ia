@@ -205,6 +205,11 @@ const AppContent: React.FC = () => {
             {activeTab === "steps" && <div className="max-w-2xl mx-auto"><StepsConfigPanel /></div>}
             {activeTab === "quality" && <div className="max-w-xl mx-auto"><QualityModule /></div>}
             {activeTab === "defects" && <div className="max-w-xl mx-auto"><DefectsModule /></div>}
+            {activeTab === "environment" && <EnvironmentalModule />}
+            {activeTab === "workspace3d" && <Workspace3DModel />}
+            {activeTab === "sst-dashboard" && <SSTDashboard />}
+            {activeTab === "ergo-cost" && <ErgonomicCostAnalysis />}
+            {activeTab === "sst-ai" && <SSTRecommendations />}
             {activeTab === "cost" && <CostAnalysis />}
             {activeTab === "montecarlo" && <MonteCarloSimulator />}
             {activeTab === "fatigue" && <FatigueDetection />}
@@ -221,7 +226,9 @@ const AppContent: React.FC = () => {
 
 const Index: React.FC = () => (
   <TimeStudyProvider>
-    <AppContent />
+    <SSTProvider>
+      <AppContent />
+    </SSTProvider>
   </TimeStudyProvider>
 );
 
