@@ -7,8 +7,15 @@ export interface EnvironmentalReading {
   zone: string;
   lux: number;
   db: number;
+  exposureHours: number; // daily exposure hours
   timestamp: Date;
   notes: string;
+}
+
+export interface ZoneConfig {
+  id: string;
+  name: string;
+  requiredSamples: number; // how many measurements needed for this zone
 }
 
 export interface MeasurementPoint3D {
@@ -51,9 +58,26 @@ export const getDbCompliance = (db: number): ComplianceLevel => {
   return "critical";
 };
 
+/** Calculate LEQ (equivalent continuous noise level) from multiple readings */
+export const calculateLEQ = (readings: { db: number; exposureHours: number }[]): number => {
+  if (readings.length === 0) return 0;
+  const totalHours = readings.reduce((s, r) => s + r.exposureHours, 0);
+  if (totalHours === 0) return 0;
+  const sum = readings.reduce((s, r) => s + r.exposureHours * Math.pow(10, r.db / 10), 0);
+  return 10 * Math.log10(sum / totalHours);
+};
+
+/** Daily noise dose percentage (based on 85 dB / 8h criterion) */
+export const calculateDailyDose = (leq: number, hours: number): number => {
+  if (leq <= 0 || hours <= 0) return 0;
+  const allowedHours = 8 / Math.pow(2, (leq - 85) / 3);
+  return (hours / allowedHours) * 100;
+};
+
 interface SSTState {
   readings: EnvironmentalReading[];
   workstations: WorkstationConfig[];
+  zones: ZoneConfig[];
   addReading: (reading: EnvironmentalReading) => void;
   removeReading: (id: string) => void;
   addWorkstation: (ws: WorkstationConfig) => void;
@@ -61,6 +85,9 @@ interface SSTState {
   addMeasurementPoint: (wsId: number, point: MeasurementPoint3D) => void;
   updateMeasurementPoint: (wsId: number, pointId: string, lux: number, db: number) => void;
   removeMeasurementPoint: (wsId: number, pointId: string) => void;
+  addZone: (zone: ZoneConfig) => void;
+  updateZone: (id: string, name: string, requiredSamples: number) => void;
+  removeZone: (id: string) => void;
   clearSST: () => void;
 }
 
@@ -72,9 +99,16 @@ export const useSST = () => {
   return ctx;
 };
 
+const DEFAULT_ZONES: ZoneConfig[] = [
+  { id: "z1", name: "Estación Principal", requiredSamples: 5 },
+  { id: "z2", name: "Área de Ensamble", requiredSamples: 3 },
+  { id: "z3", name: "Zona de Inspección", requiredSamples: 3 },
+];
+
 export const SSTProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [readings, setReadings] = useState<EnvironmentalReading[]>([]);
   const [workstations, setWorkstations] = useState<WorkstationConfig[]>([]);
+  const [zones, setZones] = useState<ZoneConfig[]>(DEFAULT_ZONES);
 
   const addReading = useCallback((r: EnvironmentalReading) => {
     setReadings((prev) => [...prev, r]);
@@ -104,12 +138,7 @@ export const SSTProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setWorkstations((prev) =>
       prev.map((w) =>
         w.id === wsId
-          ? {
-              ...w,
-              measurementPoints: w.measurementPoints.map((p) =>
-                p.id === pointId ? { ...p, lux, db } : p
-              ),
-            }
+          ? { ...w, measurementPoints: w.measurementPoints.map((p) => p.id === pointId ? { ...p, lux, db } : p) }
           : w
       )
     );
@@ -118,11 +147,21 @@ export const SSTProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const removeMeasurementPoint = useCallback((wsId: number, pointId: string) => {
     setWorkstations((prev) =>
       prev.map((w) =>
-        w.id === wsId
-          ? { ...w, measurementPoints: w.measurementPoints.filter((p) => p.id !== pointId) }
-          : w
+        w.id === wsId ? { ...w, measurementPoints: w.measurementPoints.filter((p) => p.id !== pointId) } : w
       )
     );
+  }, []);
+
+  const addZone = useCallback((zone: ZoneConfig) => {
+    setZones((prev) => [...prev, zone]);
+  }, []);
+
+  const updateZone = useCallback((id: string, name: string, requiredSamples: number) => {
+    setZones((prev) => prev.map((z) => z.id === id ? { ...z, name, requiredSamples } : z));
+  }, []);
+
+  const removeZone = useCallback((id: string) => {
+    setZones((prev) => prev.filter((z) => z.id !== id));
   }, []);
 
   const clearSST = useCallback(() => {
@@ -133,10 +172,11 @@ export const SSTProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   return (
     <SSTContext.Provider
       value={{
-        readings, workstations,
+        readings, workstations, zones,
         addReading, removeReading,
         addWorkstation, removeWorkstation,
         addMeasurementPoint, updateMeasurementPoint, removeMeasurementPoint,
+        addZone, updateZone, removeZone,
         clearSST,
       }}
     >

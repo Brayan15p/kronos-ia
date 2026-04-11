@@ -1,8 +1,11 @@
-import React, { useState } from "react";
-import { useSST, getLuxCompliance, getDbCompliance, REGULATIONS } from "@/context/SSTContext";
+import React, { useState, useMemo } from "react";
+import { useSST, getLuxCompliance, getDbCompliance, REGULATIONS, calculateLEQ, calculateDailyDose } from "@/context/SSTContext";
 import { useTimeStudy } from "@/context/TimeStudyContext";
-import { Plus, Trash2, Sun, Volume2, AlertTriangle, CheckCircle, XCircle } from "lucide-react";
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Legend } from "recharts";
+import { Plus, Trash2, Sun, Volume2, AlertTriangle, CheckCircle, XCircle, Settings2, MapPin } from "lucide-react";
+import {
+  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  BarChart, Bar, Legend, ScatterChart, Scatter, ZAxis, Cell,
+} from "recharts";
 
 const complianceColor = (level: "ok" | "warning" | "critical") =>
   level === "ok" ? "text-green-400" : level === "warning" ? "text-yellow-400" : "text-red-400";
@@ -16,14 +19,29 @@ const ComplianceIcon: React.FC<{ level: "ok" | "warning" | "critical" }> = ({ le
   return <XCircle className="w-4 h-4 text-red-400" />;
 };
 
+const heatColor = (value: number, min: number, max: number) => {
+  const norm = Math.max(0, Math.min(1, (value - min) / (max - min || 1)));
+  if (norm <= 0.5) {
+    const g = Math.round(200 + norm * 110);
+    return `rgb(${Math.round(norm * 2 * 234)}, ${g}, 50)`;
+  }
+  const r = 234;
+  const g = Math.round(200 - (norm - 0.5) * 2 * 200);
+  return `rgb(${r}, ${g}, 50)`;
+};
+
 const EnvironmentalModule: React.FC = () => {
-  const { readings, addReading, removeReading } = useSST();
+  const { readings, addReading, removeReading, zones, addZone, updateZone, removeZone } = useSST();
   const { operators } = useTimeStudy();
   const [selOp, setSelOp] = useState(operators[0]?.id ?? 0);
-  const [zone, setZone] = useState("Estación Principal");
+  const [zone, setZone] = useState(zones[0]?.name ?? "Estación Principal");
   const [lux, setLux] = useState("350");
   const [db, setDb] = useState("72");
+  const [exposureHours, setExposureHours] = useState("8");
   const [notes, setNotes] = useState("");
+  const [showZoneConfig, setShowZoneConfig] = useState(false);
+  const [newZoneName, setNewZoneName] = useState("");
+  const [newZoneSamples, setNewZoneSamples] = useState("5");
 
   const handleAdd = () => {
     const op = operators.find((o) => o.id === selOp);
@@ -35,12 +53,21 @@ const EnvironmentalModule: React.FC = () => {
       zone,
       lux: Number(lux) || 0,
       db: Number(db) || 0,
+      exposureHours: Number(exposureHours) || 8,
       timestamp: new Date(),
       notes,
     });
     setNotes("");
   };
 
+  const handleAddZone = () => {
+    if (!newZoneName.trim()) return;
+    addZone({ id: crypto.randomUUID(), name: newZoneName.trim(), requiredSamples: Number(newZoneSamples) || 5 });
+    setNewZoneName("");
+    setNewZoneSamples("5");
+  };
+
+  // ---- Computed data ----
   const avgLux = readings.length > 0 ? readings.reduce((s, r) => s + r.lux, 0) / readings.length : 0;
   const avgDb = readings.length > 0 ? readings.reduce((s, r) => s + r.db, 0) / readings.length : 0;
   const luxComp = getLuxCompliance(avgLux);
@@ -48,6 +75,63 @@ const EnvironmentalModule: React.FC = () => {
   const complianceRate = readings.length > 0
     ? (readings.filter((r) => getLuxCompliance(r.lux) === "ok" && getDbCompliance(r.db) === "ok").length / readings.length * 100)
     : 0;
+
+  // LEQ & daily dose
+  const leq = calculateLEQ(readings.map((r) => ({ db: r.db, exposureHours: r.exposureHours })));
+  const totalExposure = readings.length > 0 ? readings.reduce((s, r) => s + r.exposureHours, 0) / readings.length : 8;
+  const dailyDose = calculateDailyDose(leq, totalExposure);
+
+  // Zone averages per operator
+  const zoneOperatorData = useMemo(() => {
+    const uniqueZones = [...new Set(readings.map((r) => r.zone))];
+    return uniqueZones.map((z) => {
+      const zoneReadings = readings.filter((r) => r.zone === z);
+      const zoneConfig = zones.find((zc) => zc.name === z);
+      const byOp = operators.map((op) => {
+        const opR = zoneReadings.filter((r) => r.operatorId === op.id);
+        return {
+          operator: op.name,
+          operatorId: op.id,
+          avgLux: opR.length > 0 ? Math.round(opR.reduce((s, r) => s + r.lux, 0) / opR.length) : 0,
+          avgDb: opR.length > 0 ? Math.round(opR.reduce((s, r) => s + r.db, 0) / opR.length) : 0,
+          leq: calculateLEQ(opR.map((r) => ({ db: r.db, exposureHours: r.exposureHours }))),
+          count: opR.length,
+          required: zoneConfig?.requiredSamples ?? 5,
+        };
+      }).filter((d) => d.count > 0);
+
+      return {
+        zone: z,
+        avgLux: Math.round(zoneReadings.reduce((s, r) => s + r.lux, 0) / zoneReadings.length),
+        avgDb: Math.round(zoneReadings.reduce((s, r) => s + r.db, 0) / zoneReadings.length),
+        count: zoneReadings.length,
+        required: zoneConfig?.requiredSamples ?? 5,
+        byOperator: byOp,
+      };
+    });
+  }, [readings, operators, zones]);
+
+  // Heatmap data for zones
+  const heatmapLuxData = zoneOperatorData.map((z) => ({
+    zone: z.zone,
+    value: z.avgLux,
+    compliance: getLuxCompliance(z.avgLux),
+  }));
+
+  const heatmapDbData = zoneOperatorData.map((z) => ({
+    zone: z.zone,
+    value: z.avgDb,
+    compliance: getDbCompliance(z.avgDb),
+  }));
+
+  // Zone bar chart data
+  const zoneBarData = zoneOperatorData.map((z) => ({
+    name: z.zone.length > 15 ? z.zone.slice(0, 15) + "…" : z.zone,
+    lux: z.avgLux,
+    db: z.avgDb,
+    luxOk: getLuxCompliance(z.avgLux) === "ok" ? 1 : 0,
+    dbOk: getDbCompliance(z.avgDb) === "ok" ? 1 : 0,
+  }));
 
   const trendData = readings.map((r, i) => ({
     name: `#${i + 1}`,
@@ -58,63 +142,61 @@ const EnvironmentalModule: React.FC = () => {
     dbMax: REGULATIONS.db8h.max,
   }));
 
-  const byOperator = operators.map((op) => {
-    const opReadings = readings.filter((r) => r.operatorId === op.id);
-    return {
-      name: op.name,
-      avgLux: opReadings.length > 0 ? Math.round(opReadings.reduce((s, r) => s + r.lux, 0) / opReadings.length) : 0,
-      avgDb: opReadings.length > 0 ? Math.round(opReadings.reduce((s, r) => s + r.db, 0) / opReadings.length) : 0,
-    };
-  });
-
   return (
     <div className="space-y-6">
       {/* KPI Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className={`glass-card p-4 border ${complianceBg(luxComp)}`}>
-          <div className="flex items-center gap-2 mb-1">
-            <Sun className="w-4 h-4 text-yellow-400" />
-            <span className="text-xs text-muted-foreground uppercase tracking-wider">Promedio Luz</span>
+      <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
+        <div className={`glass-card p-3 border ${complianceBg(luxComp)}`}>
+          <div className="flex items-center gap-1 mb-1">
+            <Sun className="w-3.5 h-3.5 text-yellow-400" />
+            <span className="text-[10px] text-muted-foreground uppercase">Prom. Lux</span>
           </div>
-          <div className="flex items-center gap-2">
-            <span className="text-2xl font-bold font-mono text-foreground">{Math.round(avgLux)}</span>
-            <span className="text-xs text-muted-foreground">lux</span>
+          <div className="flex items-center gap-1">
+            <span className="text-xl font-bold font-mono text-foreground">{Math.round(avgLux)}</span>
             <ComplianceIcon level={luxComp} />
           </div>
-          <p className="text-[10px] text-muted-foreground mt-1">Norma: {REGULATIONS.lux.min}-{REGULATIONS.lux.max} lux</p>
         </div>
 
-        <div className={`glass-card p-4 border ${complianceBg(dbComp)}`}>
-          <div className="flex items-center gap-2 mb-1">
-            <Volume2 className="w-4 h-4 text-blue-400" />
-            <span className="text-xs text-muted-foreground uppercase tracking-wider">Promedio Sonido</span>
+        <div className={`glass-card p-3 border ${complianceBg(dbComp)}`}>
+          <div className="flex items-center gap-1 mb-1">
+            <Volume2 className="w-3.5 h-3.5 text-blue-400" />
+            <span className="text-[10px] text-muted-foreground uppercase">Prom. dB</span>
           </div>
-          <div className="flex items-center gap-2">
-            <span className="text-2xl font-bold font-mono text-foreground">{Math.round(avgDb)}</span>
-            <span className="text-xs text-muted-foreground">dB</span>
+          <div className="flex items-center gap-1">
+            <span className="text-xl font-bold font-mono text-foreground">{Math.round(avgDb)}</span>
             <ComplianceIcon level={dbComp} />
           </div>
-          <p className="text-[10px] text-muted-foreground mt-1">Norma: ≤{REGULATIONS.db8h.max} dB (8h)</p>
         </div>
 
-        <div className="glass-card p-4">
-          <span className="text-xs text-muted-foreground uppercase tracking-wider">Cumplimiento</span>
-          <div className="text-2xl font-bold font-mono text-foreground">{complianceRate.toFixed(0)}%</div>
-          <div className="w-full bg-muted rounded-full h-2 mt-2">
-            <div
-              className="h-2 rounded-full transition-all"
-              style={{
-                width: `${complianceRate}%`,
-                background: complianceRate >= 80 ? "hsl(var(--success))" : complianceRate >= 50 ? "hsl(var(--warning))" : "hsl(var(--destructive))",
-              }}
-            />
+        <div className={`glass-card p-3 border ${complianceBg(getDbCompliance(leq))}`}>
+          <div className="flex items-center gap-1 mb-1">
+            <span className="text-[10px] text-muted-foreground uppercase">LEQ diario</span>
+          </div>
+          <div className="text-xl font-bold font-mono text-foreground">{leq > 0 ? leq.toFixed(1) : "—"} <span className="text-xs text-muted-foreground">dB</span></div>
+          <p className="text-[9px] text-muted-foreground">Nivel eq. continuo</p>
+        </div>
+
+        <div className={`glass-card p-3 border ${dailyDose > 100 ? "bg-red-500/10 border-red-500/30" : dailyDose > 50 ? "bg-yellow-500/10 border-yellow-500/30" : "bg-green-500/10 border-green-500/30"}`}>
+          <span className="text-[10px] text-muted-foreground uppercase">Dosis Diaria</span>
+          <div className="text-xl font-bold font-mono text-foreground">{dailyDose > 0 ? dailyDose.toFixed(0) : "—"}%</div>
+          <p className="text-[9px] text-muted-foreground">{dailyDose > 100 ? "⚠ Excede límite" : "Dentro de norma"}</p>
+        </div>
+
+        <div className="glass-card p-3">
+          <span className="text-[10px] text-muted-foreground uppercase">Cumplimiento</span>
+          <div className="text-xl font-bold font-mono text-foreground">{complianceRate.toFixed(0)}%</div>
+          <div className="w-full bg-muted rounded-full h-1.5 mt-1">
+            <div className="h-1.5 rounded-full transition-all" style={{
+              width: `${complianceRate}%`,
+              background: complianceRate >= 80 ? "#22c55e" : complianceRate >= 50 ? "#eab308" : "#ef4444",
+            }} />
           </div>
         </div>
 
-        <div className="glass-card p-4">
-          <span className="text-xs text-muted-foreground uppercase tracking-wider">Mediciones</span>
-          <div className="text-2xl font-bold font-mono text-foreground">{readings.length}</div>
-          <p className="text-[10px] text-muted-foreground mt-1">{operators.length} operarios</p>
+        <div className="glass-card p-3">
+          <span className="text-[10px] text-muted-foreground uppercase">Mediciones</span>
+          <div className="text-xl font-bold font-mono text-foreground">{readings.length}</div>
+          <p className="text-[9px] text-muted-foreground">{zoneOperatorData.length} zonas</p>
         </div>
       </div>
 
@@ -123,30 +205,30 @@ const EnvironmentalModule: React.FC = () => {
         <h3 className="font-display font-bold text-foreground mb-4 flex items-center gap-2">
           <Plus className="w-4 h-4 text-primary" /> Nueva Medición
         </h3>
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
           <div>
             <label className="text-xs text-muted-foreground uppercase tracking-wider">Operario</label>
             <select value={selOp} onChange={(e) => setSelOp(Number(e.target.value))} className="input-glass mt-1">
-              {operators.map((o) => (
-                <option key={o.id} value={o.id}>{o.name}</option>
-              ))}
+              {operators.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
             </select>
           </div>
           <div>
             <label className="text-xs text-muted-foreground uppercase tracking-wider">Zona</label>
-            <input value={zone} onChange={(e) => setZone(e.target.value)} className="input-glass mt-1" />
+            <select value={zone} onChange={(e) => setZone(e.target.value)} className="input-glass mt-1">
+              {zones.map((z) => <option key={z.id} value={z.name}>{z.name}</option>)}
+            </select>
           </div>
           <div>
-            <label className="text-xs text-muted-foreground uppercase tracking-wider flex items-center gap-1">
-              <Sun className="w-3 h-3" /> Lux
-            </label>
+            <label className="text-xs text-muted-foreground uppercase tracking-wider flex items-center gap-1"><Sun className="w-3 h-3" /> Lux</label>
             <input type="number" value={lux} onChange={(e) => setLux(e.target.value)} className="input-glass mt-1" />
           </div>
           <div>
-            <label className="text-xs text-muted-foreground uppercase tracking-wider flex items-center gap-1">
-              <Volume2 className="w-3 h-3" /> dB
-            </label>
+            <label className="text-xs text-muted-foreground uppercase tracking-wider flex items-center gap-1"><Volume2 className="w-3 h-3" /> dB</label>
             <input type="number" value={db} onChange={(e) => setDb(e.target.value)} className="input-glass mt-1" />
+          </div>
+          <div>
+            <label className="text-xs text-muted-foreground uppercase tracking-wider">Exp. (h)</label>
+            <input type="number" value={exposureHours} onChange={(e) => setExposureHours(e.target.value)} className="input-glass mt-1" min="0.5" max="12" step="0.5" />
           </div>
           <div>
             <label className="text-xs text-muted-foreground uppercase tracking-wider">Notas</label>
@@ -158,55 +240,217 @@ const EnvironmentalModule: React.FC = () => {
         </button>
       </div>
 
-      {/* Charts */}
-      {readings.length > 1 && (
+      {/* Zone Config */}
+      <div className="glass-card p-5">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="font-display font-bold text-sm text-foreground flex items-center gap-2">
+            <MapPin className="w-4 h-4 text-primary" /> Configuración de Zonas
+          </h3>
+          <button onClick={() => setShowZoneConfig(!showZoneConfig)} className="btn-secondary-glass text-xs flex items-center gap-1">
+            <Settings2 className="w-3 h-3" /> {showZoneConfig ? "Cerrar" : "Editar"}
+          </button>
+        </div>
+
+        {/* Zone summary cards */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          {zones.map((z) => {
+            const zd = zoneOperatorData.find((zz) => zz.zone === z.name);
+            const progress = zd ? Math.min(100, (zd.count / z.requiredSamples) * 100) : 0;
+            return (
+              <div key={z.id} className="p-3 rounded-lg bg-muted/20 border border-border/30">
+                <div className="flex items-center justify-between mb-1">
+                  <p className="text-xs font-semibold text-foreground">{z.name}</p>
+                  <span className={`text-[10px] font-mono ${progress >= 100 ? "text-green-400" : "text-yellow-400"}`}>
+                    {zd?.count ?? 0}/{z.requiredSamples}
+                  </span>
+                </div>
+                <div className="w-full bg-muted rounded-full h-1.5 mb-2">
+                  <div className="h-1.5 rounded-full transition-all" style={{
+                    width: `${progress}%`,
+                    background: progress >= 100 ? "#22c55e" : "#eab308",
+                  }} />
+                </div>
+                {zd && (
+                  <div className="flex gap-3 text-[10px]">
+                    <span className="text-yellow-400 font-mono">☀️ {zd.avgLux} lux</span>
+                    <span className="text-blue-400 font-mono">🔊 {zd.avgDb} dB</span>
+                  </div>
+                )}
+                {/* Per-operator breakdown */}
+                {zd && zd.byOperator.length > 0 && (
+                  <div className="mt-2 space-y-1">
+                    {zd.byOperator.map((bo) => (
+                      <div key={bo.operatorId} className="flex items-center justify-between text-[10px]">
+                        <span className="text-muted-foreground">{bo.operator}</span>
+                        <div className="flex gap-2">
+                          <span className={complianceColor(getLuxCompliance(bo.avgLux))}>{bo.avgLux} lux</span>
+                          <span className={complianceColor(getDbCompliance(bo.avgDb))}>{bo.avgDb} dB</span>
+                          <span className="text-muted-foreground">LEQ:{bo.leq.toFixed(0)}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {showZoneConfig && (
+          <div className="mt-4 space-y-3 p-3 rounded-lg bg-muted/10 border border-border/30">
+            <div className="space-y-2">
+              {zones.map((z) => (
+                <div key={z.id} className="flex items-center gap-2">
+                  <input
+                    value={z.name}
+                    onChange={(e) => updateZone(z.id, e.target.value, z.requiredSamples)}
+                    className="input-glass flex-1 text-xs"
+                  />
+                  <input
+                    type="number"
+                    value={z.requiredSamples}
+                    onChange={(e) => updateZone(z.id, z.name, Number(e.target.value) || 1)}
+                    className="input-glass w-20 text-xs"
+                    min="1"
+                  />
+                  <span className="text-[10px] text-muted-foreground">muestras</span>
+                  <button onClick={() => removeZone(z.id)} className="text-muted-foreground hover:text-destructive">
+                    <Trash2 className="w-3 h-3" />
+                  </button>
+                </div>
+              ))}
+            </div>
+            <div className="flex items-center gap-2">
+              <input value={newZoneName} onChange={(e) => setNewZoneName(e.target.value)} placeholder="Nueva zona" className="input-glass flex-1 text-xs" />
+              <input type="number" value={newZoneSamples} onChange={(e) => setNewZoneSamples(e.target.value)} className="input-glass w-20 text-xs" min="1" />
+              <button onClick={handleAddZone} className="btn-primary-glass text-xs"><Plus className="w-3 h-3" /></button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Heatmap: Zones compliance */}
+      {zoneOperatorData.length > 0 && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <div className="glass-card p-5">
-            <h3 className="font-display font-bold text-sm text-foreground mb-3">📈 Tendencia Luz (lux)</h3>
-            <ResponsiveContainer width="100%" height={220}>
-              <AreaChart data={trendData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                <XAxis dataKey="name" tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 10 }} />
-                <YAxis tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 10 }} />
-                <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8 }} />
-                <Area type="monotone" dataKey="luxMin" stroke="none" fill="hsl(155 70% 45% / 0.08)" name="Mínimo norma" />
-                <Area type="monotone" dataKey="luxMax" stroke="none" fill="hsl(155 70% 45% / 0.05)" name="Máximo norma" />
-                <Area type="monotone" dataKey="lux" stroke="hsl(40 95% 55%)" fill="hsl(40 95% 55% / 0.2)" strokeWidth={2} name="Lux medido" />
-              </AreaChart>
-            </ResponsiveContainer>
+            <h3 className="font-display font-bold text-sm text-foreground mb-3">🗺️ Mapa de Calor — Luz por Zona</h3>
+            <div className="space-y-2">
+              {heatmapLuxData.map((h) => (
+                <div key={h.zone} className="flex items-center gap-3">
+                  <span className="text-xs text-muted-foreground w-32 truncate">{h.zone}</span>
+                  <div className="flex-1 h-8 rounded-lg relative overflow-hidden" style={{ background: heatColor(h.value, 100, 800) }}>
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <span className="text-xs font-bold text-white drop-shadow-lg">{h.value} lux</span>
+                    </div>
+                  </div>
+                  <ComplianceIcon level={h.compliance} />
+                </div>
+              ))}
+              <div className="flex items-center gap-1 mt-2">
+                <div className="h-3 flex-1 rounded" style={{ background: "linear-gradient(90deg, #22c55e 0%, #eab308 50%, #ef4444 100%)" }} />
+                <span className="text-[9px] text-muted-foreground">100</span>
+                <span className="text-[9px] text-muted-foreground ml-auto">800 lux</span>
+              </div>
+            </div>
           </div>
 
           <div className="glass-card p-5">
-            <h3 className="font-display font-bold text-sm text-foreground mb-3">🔊 Tendencia Sonido (dB)</h3>
-            <ResponsiveContainer width="100%" height={220}>
-              <AreaChart data={trendData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                <XAxis dataKey="name" tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 10 }} />
-                <YAxis tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 10 }} />
-                <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8 }} />
-                <Area type="monotone" dataKey="dbMax" stroke="hsl(0 80% 58% / 0.5)" fill="hsl(0 80% 58% / 0.05)" strokeDasharray="5 5" name="Límite 85 dB" />
-                <Area type="monotone" dataKey="db" stroke="hsl(185 100% 50%)" fill="hsl(185 100% 50% / 0.2)" strokeWidth={2} name="dB medido" />
-              </AreaChart>
-            </ResponsiveContainer>
+            <h3 className="font-display font-bold text-sm text-foreground mb-3">🗺️ Mapa de Calor — Sonido por Zona</h3>
+            <div className="space-y-2">
+              {heatmapDbData.map((h) => (
+                <div key={h.zone} className="flex items-center gap-3">
+                  <span className="text-xs text-muted-foreground w-32 truncate">{h.zone}</span>
+                  <div className="flex-1 h-8 rounded-lg relative overflow-hidden" style={{ background: heatColor(h.value, 50, 100) }}>
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <span className="text-xs font-bold text-white drop-shadow-lg">{h.value} dB</span>
+                    </div>
+                  </div>
+                  <ComplianceIcon level={h.compliance} />
+                </div>
+              ))}
+              <div className="flex items-center gap-1 mt-2">
+                <div className="h-3 flex-1 rounded" style={{ background: "linear-gradient(90deg, #22c55e 0%, #eab308 50%, #ef4444 100%)" }} />
+                <span className="text-[9px] text-muted-foreground">50</span>
+                <span className="text-[9px] text-muted-foreground ml-auto">100 dB</span>
+              </div>
+            </div>
           </div>
         </div>
       )}
 
-      {/* By Operator Chart */}
-      {byOperator.some((o) => o.avgLux > 0) && (
-        <div className="glass-card p-5">
-          <h3 className="font-display font-bold text-sm text-foreground mb-3">👷 Comparativa por Operario</h3>
-          <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={byOperator}>
-              <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-              <XAxis dataKey="name" tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 10 }} />
-              <YAxis tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 10 }} />
-              <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8 }} />
-              <Legend />
-              <Bar dataKey="avgLux" fill="hsl(40 95% 55%)" name="Prom. Lux" radius={[4, 4, 0, 0]} />
-              <Bar dataKey="avgDb" fill="hsl(185 100% 50%)" name="Prom. dB" radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
+      {/* Zone bar charts */}
+      {zoneBarData.length > 0 && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div className="glass-card p-5">
+            <h3 className="font-display font-bold text-sm text-foreground mb-3">☀️ Promedio Lux por Zona</h3>
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart data={zoneBarData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                <XAxis dataKey="name" tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 9 }} />
+                <YAxis tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 9 }} />
+                <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8 }} />
+                <Bar dataKey="lux" name="Prom. Lux" radius={[4, 4, 0, 0]}>
+                  {zoneBarData.map((entry, i) => (
+                    <Cell key={i} fill={entry.luxOk ? "#22c55e" : getLuxCompliance(entry.lux) === "warning" ? "#eab308" : "#ef4444"} />
+                  ))}
+                </Bar>
+                {/* Reference lines */}
+              </BarChart>
+            </ResponsiveContainer>
+            <div className="flex gap-3 text-[10px] text-muted-foreground mt-1">
+              <span>— Norma: {REGULATIONS.lux.min}-{REGULATIONS.lux.max} lux</span>
+            </div>
+          </div>
+
+          <div className="glass-card p-5">
+            <h3 className="font-display font-bold text-sm text-foreground mb-3">🔊 Promedio dB por Zona</h3>
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart data={zoneBarData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                <XAxis dataKey="name" tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 9 }} />
+                <YAxis tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 9 }} domain={[0, 100]} />
+                <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8 }} />
+                <Bar dataKey="db" name="Prom. dB" radius={[4, 4, 0, 0]}>
+                  {zoneBarData.map((entry, i) => (
+                    <Cell key={i} fill={entry.dbOk ? "#22c55e" : getDbCompliance(entry.db) === "warning" ? "#eab308" : "#ef4444"} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+            <div className="flex gap-3 text-[10px] text-muted-foreground mt-1">
+              <span>— Límite: ≤{REGULATIONS.db8h.max} dB (8h)</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Trend Charts */}
+      {readings.length > 1 && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div className="glass-card p-5">
+            <h3 className="font-display font-bold text-sm text-foreground mb-3">📈 Tendencia Luz (lux)</h3>
+            <ResponsiveContainer width="100%" height={200}>
+              <AreaChart data={trendData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                <XAxis dataKey="name" tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 10 }} />
+                <YAxis tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 10 }} />
+                <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8 }} />
+                <Area type="monotone" dataKey="lux" stroke="#eab308" fill="rgba(234,179,8,0.2)" strokeWidth={2} name="Lux" />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+          <div className="glass-card p-5">
+            <h3 className="font-display font-bold text-sm text-foreground mb-3">🔊 Tendencia Sonido (dB)</h3>
+            <ResponsiveContainer width="100%" height={200}>
+              <AreaChart data={trendData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                <XAxis dataKey="name" tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 10 }} />
+                <YAxis tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 10 }} />
+                <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8 }} />
+                <Area type="monotone" dataKey="db" stroke="#38bdf8" fill="rgba(56,189,248,0.2)" strokeWidth={2} name="dB" />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
         </div>
       )}
 
@@ -214,7 +458,7 @@ const EnvironmentalModule: React.FC = () => {
       <div className="glass-card p-5">
         <h3 className="font-display font-bold text-sm text-foreground mb-3">📋 Historial de Mediciones</h3>
         {readings.length === 0 ? (
-          <p className="text-sm text-muted-foreground text-center py-8">No hay mediciones registradas. Agrega tu primera medición arriba.</p>
+          <p className="text-sm text-muted-foreground text-center py-8">No hay mediciones registradas.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
@@ -224,6 +468,7 @@ const EnvironmentalModule: React.FC = () => {
                   <th className="text-left p-2 text-muted-foreground">Zona</th>
                   <th className="text-center p-2 text-muted-foreground">☀️ Lux</th>
                   <th className="text-center p-2 text-muted-foreground">🔊 dB</th>
+                  <th className="text-center p-2 text-muted-foreground">Exp. (h)</th>
                   <th className="text-center p-2 text-muted-foreground">Estado</th>
                   <th className="text-left p-2 text-muted-foreground">Hora</th>
                   <th className="p-2"></th>
@@ -240,6 +485,7 @@ const EnvironmentalModule: React.FC = () => {
                     <td className="p-2 text-center">
                       <span className={`font-mono font-bold ${complianceColor(getDbCompliance(r.db))}`}>{r.db}</span>
                     </td>
+                    <td className="p-2 text-center text-muted-foreground font-mono">{r.exposureHours}h</td>
                     <td className="p-2 text-center">
                       <div className="flex items-center justify-center gap-1">
                         <ComplianceIcon level={getLuxCompliance(r.lux)} />
@@ -276,11 +522,8 @@ const EnvironmentalModule: React.FC = () => {
           <div className="p-3 rounded-lg bg-muted/30 border border-border/30">
             <p className="font-semibold text-foreground mb-1">🔊 Ruido — Res. 1792/1990</p>
             <p className="text-muted-foreground">8h: <span className="text-blue-400 font-mono">≤85 dB</span> · 4h: ≤90 dB · 2h: ≤95 dB</p>
-            <div className="flex gap-2 mt-2">
-              <span className="px-2 py-0.5 rounded text-[10px] bg-green-500/10 text-green-400 border border-green-500/30">≤80 ✓</span>
-              <span className="px-2 py-0.5 rounded text-[10px] bg-yellow-500/10 text-yellow-400 border border-yellow-500/30">80-85 ⚠</span>
-              <span className="px-2 py-0.5 rounded text-[10px] bg-red-500/10 text-red-400 border border-red-500/30">&gt;85 ✗</span>
-            </div>
+            <p className="text-muted-foreground mt-1">LEQ = Nivel equivalente continuo diario</p>
+            <p className="text-muted-foreground">Dosis = (Texposición / Tpermitido) × 100%</p>
           </div>
         </div>
       </div>
