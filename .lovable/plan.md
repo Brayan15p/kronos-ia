@@ -1,100 +1,102 @@
+# Plan: Rediseño Premium SST + Zonas Configurables + Imagen Operario
 
+## Resumen
 
-# Plan: Modulos de Ergonomia Ambiental + Modelo 3D -- KRONOS.AI
-
-## Resumen Ejecutivo
-
-Crear un ecosistema de modulos de **Seguridad y Salud en el Trabajo (SST)** que mida luz (lux) y sonido (dB) en estaciones de trabajo, con un modelo 3D interactivo del puesto de trabajo, recomendaciones con IA, y traduccion de riesgos ergonomicos a costos economicos.
+Tres cambios principales: (1) zonas configurables para medir solo luz, solo sonido, o ambos; (2) reemplazar el modelo 3D con la imagen del operario como fondo interactivo; (3) adicion  y resieño de completo de la sección SST con estética remium enfocada en dinero y acción.
 
 ---
 
-## Modulos a Crear
+## 1. Zonas con tipo de medición configurable
 
-### 1. Modulo de Medicion Ambiental (`EnvironmentalModule.tsx`)
-- Registro manual de mediciones de **luz (lux)** y **sonido (dB)** por operario y por zona
-- Historico de mediciones con timestamps
-- Indicadores de cumplimiento normativo (Resolucion 2400 Colombia: 300-500 lux trabajo fino, <85 dB 8h)
-- Semaforo visual: verde/amarillo/rojo segun norma
-- Graficos de tendencia por operario y por turno
+**Archivo: `src/context/SSTContext.tsx**`
 
-### 2. Modelo 3D del Puesto de Trabajo (`Workspace3DModel.tsx`)
-- Escena 3D con **@react-three/fiber v8** y **@react-three/drei v9** (compatibles con React 18)
-- Modelo de mesa + operario sentado + grulla en proceso
-- **Puntos de medicion interactivos** (esferas clickeables) donde el usuario puede:
-  - Colocar nuevos puntos arrastrando sobre la escena
-  - Asignar valores de lux y dB a cada punto
-  - Ver tooltip con los valores al hacer hover
-- Mapa de calor visual (colores en el piso/mesa segun niveles)
-- Soporte para multiples operarios (cambiar entre estaciones)
-- Controles de camara (orbitar, zoom)
+- Agregar campo `measureType: "lux" | "db" | "both"` a `ZoneConfig`
+- Actualizar `DEFAULT_ZONES` con este campo
 
-### 3. Dashboard SST (`SSTDashboard.tsx`)
-- KPIs: promedio lux, promedio dB, % cumplimiento normativo, riesgo acumulado
-- Graficos con recharts: tendencia temporal, comparativa entre operarios, distribucion por zona
-- Alertas automaticas cuando se exceden limites
+**Archivo: `src/components/EnvironmentalModule.tsx**`
 
-### 4. Analisis de Costos Ergonomicos (`ErgonomicCostAnalysis.tsx`)
-- Traduccion de riesgos a costos:
-  - Costo de ausentismo por enfermedad laboral (hipoacusia, fatiga visual)
-  - Costo de EPP adicional requerido
-  - Costo de adecuacion del puesto (lamparas, paneles acusticos)
-  - ROI de mejoras ergonomicas
-- Proyeccion mensual/anual de perdidas por incumplimiento
-
-### 5. Recomendaciones con IA (`SSTRecommendations.tsx`)
-- Edge function que usa Lovable AI (gemini-3-flash-preview) para analizar datos de luz/sonido
-- Genera recomendaciones especificas:
-  - Redistribucion de luminarias
-  - Rotacion de operarios
-  - Equipos de proteccion personal
-  - Rediseno del layout
-- Incluye estimacion de costo de implementacion vs ahorro
+- En el panel de configuración de zonas, agregar selector de tipo (Solo Luz / Solo Sonido / Ambos)
+- En el formulario de registro, ocultar campos según el `measureType` de la zona seleccionada
+- Ajustar cálculos y promedios para respetar el tipo
 
 ---
 
-## Cambios Tecnicos
+## 2. Reemplazar modelo 3D con imagen interactiva
 
-### Dependencias nuevas
-- `@react-three/fiber@^8.18.0` -- motor 3D para React
-- `@react-three/drei@^9.122.0` -- helpers (OrbitControls, Text, etc.)
-- `three@^0.170.0` -- libreria base
+**Archivo: `src/components/Workspace3DModel.tsx**`
 
-### Context (`TimeStudyContext.tsx`)
-- Agregar interfaces: `EnvironmentalReading`, `MeasurementPoint3D`, `WorkstationConfig`
-- Agregar estado y funciones: `readings[]`, `addReading()`, `measurementPoints[]`, `addMeasurementPoint()`
-
-### Navegacion (`Index.tsx`)
-- Nueva categoria "Ergonomia" en sidebar con los modulos:
-  - Ambiente (luz/sonido)
-  - Modelo 3D
-  - Dashboard SST
-  - Costos Ergonomicos
-  - IA SST
-
-### Edge Function (`supabase/functions/sst-recommendations/index.ts`)
-- Recibe datos ambientales, los analiza con Lovable AI
-- Retorna recomendaciones estructuradas con costos estimados
+- Copiar la imagen del operario a `src/assets/operario-origami.png`
+- Reemplazar el Canvas 3D por una vista 2D con la imagen como fondo
+- Mantener la funcionalidad de colocar puntos de medición sobre la imagen (click para poner punto, editar lux/dB)
+- Puntos representados como círculos SVG/HTML superpuestos con colores de cumplimiento
+- Mantener controles de editar/eliminar puntos
 
 ---
 
-## Normativa de Referencia (integrada en logica)
-| Factor | Limite Colombia | Fuente |
-|--------|----------------|--------|
-| Iluminacion trabajo fino | 300-500 lux | Res. 2400/1979 |
-| Ruido 8h | 85 dB | Res. 1792/1990 |
-| Ruido 4h | 90 dB | Res. 1792/1990 |
-| Ruido 2h | 95 dB | Res. 1792/1990 |
+## 3. Rediseño Premium de la sección SST
+
+Renombrar secciones en sidebar con nombres más atractivos y rediseñar los módulos:
+
+### Nuevos nombres de secciones:
+
+
+| Actual             | Nuevo            |
+| ------------------ | ---------------- |
+| Ambiente           | Radar Ambiental  |
+| Modelo 3D          | Visión Operativa |
+| Dashboard SST      | Centro de Mando  |
+| Costos Ergonómicos | Fuga de Capital  |
+| IA SST             | Motor IA         |
+
+
+### Nuevo componente: Panel Hero de Pérdidas (dentro de SSTDashboard o nuevo)
+
+- KPI grande: "$X perdidos hoy" con subtítulo "Recuperables: $Y"
+- Indicador de tendencia
+- Desglose por causas (Fatiga, Ruido, Ineficiencia) con barras
+- Score de eficiencia circular (0-100) con gradiente rojo→amarillo→verde
+
+### Motor de Decisiones IA (actualizar SSTRecommendations)
+
+- Recomendaciones con impacto % y ganancia estimada en COP
+- Cards con hover effects y iconos
+
+### Panel de Alertas Inteligentes
+
+- Tarjetas de alertas en tiempo real (fatiga, riesgo de error, etc.)
+- Integrado en el dashboard principal
+
+### Generación de Reportes PDF Premium
+
+- Botón "Generar reporte inteligente" prominente
+- PDF con logo KRONOS.AI, resumen ejecutivo, dinero perdido vs recuperable, score, riesgos, recomendaciones IA, gráficas
+
+### Exportación Excel SST
+
+- Botón "Exportar datos SST"
+- Genera Excel con mediciones, datos por operario/zona, históricos
 
 ---
 
-## Orden de Implementacion
-1. Context + interfaces de datos ambientales
-2. Modulo de medicion ambiental (formularios + graficos)
-3. Modelo 3D con puntos interactivos
-4. Dashboard SST
-5. Analisis de costos ergonomicos
-6. Edge function + modulo de recomendaciones IA
-7. Integracion en sidebar
+## Archivos a modificar/crear
 
-Confirma con **OK** para proceder con la implementacion.
+1. `src/context/SSTContext.tsx` — agregar `measureType` a ZoneConfig
+2. `src/components/Workspace3DModel.tsx` — reemplazar 3D por imagen interactiva
+3. `src/components/SSTDashboard.tsx` — rediseño completo con Hero de Pérdidas, Score, Alertas
+4. `src/components/SSTRecommendations.tsx` — rediseño como Motor de Decisiones
+5. `src/components/ErgonomicCostAnalysis.tsx` — rediseño premium
+6. `src/components/EnvironmentalModule.tsx` — selector de tipo de medición por zona
+7. `src/pages/Index.tsx` — renombrar tabs SST
+8. `src/components/PDFReport.tsx` — agregar sección SST premium al PDF
+9. Copiar imagen operario a `src/assets/`
 
+---
+
+## Estética
+
+- Mantener glassmorphism oscuro existente
+- Cards con brillo sutil (box-shadow con cyan/violet glow)
+- Números grandes para KPIs financieros
+- Gradientes sutiles en indicadores
+- Hover effects en tarjetas de recomendaciones
+- Tipografía Space Grotesk consistente
