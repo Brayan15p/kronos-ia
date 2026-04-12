@@ -1,10 +1,10 @@
 import React, { useState, useMemo } from "react";
-import { useSST, getLuxCompliance, getDbCompliance, REGULATIONS, calculateLEQ, calculateDailyDose } from "@/context/SSTContext";
+import { useSST, getLuxCompliance, getDbCompliance, REGULATIONS, calculateLEQ, calculateDailyDose, type MeasureType } from "@/context/SSTContext";
 import { useTimeStudy } from "@/context/TimeStudyContext";
 import { Plus, Trash2, Sun, Volume2, AlertTriangle, CheckCircle, XCircle, Settings2, MapPin } from "lucide-react";
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  BarChart, Bar, Legend, ScatterChart, Scatter, ZAxis, Cell,
+  BarChart, Bar, Cell,
 } from "recharts";
 
 const complianceColor = (level: "ok" | "warning" | "critical") =>
@@ -30,6 +30,12 @@ const heatColor = (value: number, min: number, max: number) => {
   return `rgb(${r}, ${g}, 50)`;
 };
 
+const MEASURE_TYPE_LABELS: Record<MeasureType, string> = {
+  lux: "Solo Luz",
+  db: "Solo Sonido",
+  both: "Ambos",
+};
+
 const EnvironmentalModule: React.FC = () => {
   const { readings, addReading, removeReading, zones, addZone, updateZone, removeZone } = useSST();
   const { operators } = useTimeStudy();
@@ -42,6 +48,10 @@ const EnvironmentalModule: React.FC = () => {
   const [showZoneConfig, setShowZoneConfig] = useState(false);
   const [newZoneName, setNewZoneName] = useState("");
   const [newZoneSamples, setNewZoneSamples] = useState("5");
+  const [newZoneMeasureType, setNewZoneMeasureType] = useState<MeasureType>("both");
+
+  const selectedZoneConfig = zones.find((z) => z.name === zone);
+  const zoneMeasureType = selectedZoneConfig?.measureType ?? "both";
 
   const handleAdd = () => {
     const op = operators.find((o) => o.id === selOp);
@@ -51,8 +61,8 @@ const EnvironmentalModule: React.FC = () => {
       operatorId: selOp,
       operatorName: op.name,
       zone,
-      lux: Number(lux) || 0,
-      db: Number(db) || 0,
+      lux: zoneMeasureType === "db" ? 0 : Number(lux) || 0,
+      db: zoneMeasureType === "lux" ? 0 : Number(db) || 0,
       exposureHours: Number(exposureHours) || 8,
       timestamp: new Date(),
       notes,
@@ -62,12 +72,12 @@ const EnvironmentalModule: React.FC = () => {
 
   const handleAddZone = () => {
     if (!newZoneName.trim()) return;
-    addZone({ id: crypto.randomUUID(), name: newZoneName.trim(), requiredSamples: Number(newZoneSamples) || 5 });
+    addZone({ id: crypto.randomUUID(), name: newZoneName.trim(), requiredSamples: Number(newZoneSamples) || 5, measureType: newZoneMeasureType });
     setNewZoneName("");
     setNewZoneSamples("5");
+    setNewZoneMeasureType("both");
   };
 
-  // ---- Computed data ----
   const avgLux = readings.length > 0 ? readings.reduce((s, r) => s + r.lux, 0) / readings.length : 0;
   const avgDb = readings.length > 0 ? readings.reduce((s, r) => s + r.db, 0) / readings.length : 0;
   const luxComp = getLuxCompliance(avgLux);
@@ -76,12 +86,10 @@ const EnvironmentalModule: React.FC = () => {
     ? (readings.filter((r) => getLuxCompliance(r.lux) === "ok" && getDbCompliance(r.db) === "ok").length / readings.length * 100)
     : 0;
 
-  // LEQ & daily dose
   const leq = calculateLEQ(readings.map((r) => ({ db: r.db, exposureHours: r.exposureHours })));
   const totalExposure = readings.length > 0 ? readings.reduce((s, r) => s + r.exposureHours, 0) / readings.length : 8;
   const dailyDose = calculateDailyDose(leq, totalExposure);
 
-  // Zone averages per operator
   const zoneOperatorData = useMemo(() => {
     const uniqueZones = [...new Set(readings.map((r) => r.zone))];
     return uniqueZones.map((z) => {
@@ -102,6 +110,7 @@ const EnvironmentalModule: React.FC = () => {
 
       return {
         zone: z,
+        measureType: zoneConfig?.measureType ?? "both",
         avgLux: Math.round(zoneReadings.reduce((s, r) => s + r.lux, 0) / zoneReadings.length),
         avgDb: Math.round(zoneReadings.reduce((s, r) => s + r.db, 0) / zoneReadings.length),
         count: zoneReadings.length,
@@ -111,35 +120,25 @@ const EnvironmentalModule: React.FC = () => {
     });
   }, [readings, operators, zones]);
 
-  // Heatmap data for zones
-  const heatmapLuxData = zoneOperatorData.map((z) => ({
-    zone: z.zone,
-    value: z.avgLux,
-    compliance: getLuxCompliance(z.avgLux),
+  const heatmapLuxData = zoneOperatorData.filter((z) => z.measureType !== "db").map((z) => ({
+    zone: z.zone, value: z.avgLux, compliance: getLuxCompliance(z.avgLux),
   }));
 
-  const heatmapDbData = zoneOperatorData.map((z) => ({
-    zone: z.zone,
-    value: z.avgDb,
-    compliance: getDbCompliance(z.avgDb),
+  const heatmapDbData = zoneOperatorData.filter((z) => z.measureType !== "lux").map((z) => ({
+    zone: z.zone, value: z.avgDb, compliance: getDbCompliance(z.avgDb),
   }));
 
-  // Zone bar chart data
   const zoneBarData = zoneOperatorData.map((z) => ({
     name: z.zone.length > 15 ? z.zone.slice(0, 15) + "…" : z.zone,
-    lux: z.avgLux,
-    db: z.avgDb,
+    lux: z.measureType !== "db" ? z.avgLux : 0,
+    db: z.measureType !== "lux" ? z.avgDb : 0,
     luxOk: getLuxCompliance(z.avgLux) === "ok" ? 1 : 0,
     dbOk: getDbCompliance(z.avgDb) === "ok" ? 1 : 0,
+    measureType: z.measureType,
   }));
 
   const trendData = readings.map((r, i) => ({
-    name: `#${i + 1}`,
-    lux: r.lux,
-    db: r.db,
-    luxMin: REGULATIONS.lux.min,
-    luxMax: REGULATIONS.lux.max,
-    dbMax: REGULATIONS.db8h.max,
+    name: `#${i + 1}`, lux: r.lux, db: r.db,
   }));
 
   return (
@@ -156,7 +155,6 @@ const EnvironmentalModule: React.FC = () => {
             <ComplianceIcon level={luxComp} />
           </div>
         </div>
-
         <div className={`glass-card p-3 border ${complianceBg(dbComp)}`}>
           <div className="flex items-center gap-1 mb-1">
             <Volume2 className="w-3.5 h-3.5 text-blue-400" />
@@ -167,21 +165,15 @@ const EnvironmentalModule: React.FC = () => {
             <ComplianceIcon level={dbComp} />
           </div>
         </div>
-
         <div className={`glass-card p-3 border ${complianceBg(getDbCompliance(leq))}`}>
-          <div className="flex items-center gap-1 mb-1">
-            <span className="text-[10px] text-muted-foreground uppercase">LEQ diario</span>
-          </div>
+          <span className="text-[10px] text-muted-foreground uppercase">LEQ diario</span>
           <div className="text-xl font-bold font-mono text-foreground">{leq > 0 ? leq.toFixed(1) : "—"} <span className="text-xs text-muted-foreground">dB</span></div>
-          <p className="text-[9px] text-muted-foreground">Nivel eq. continuo</p>
         </div>
-
         <div className={`glass-card p-3 border ${dailyDose > 100 ? "bg-red-500/10 border-red-500/30" : dailyDose > 50 ? "bg-yellow-500/10 border-yellow-500/30" : "bg-green-500/10 border-green-500/30"}`}>
           <span className="text-[10px] text-muted-foreground uppercase">Dosis Diaria</span>
           <div className="text-xl font-bold font-mono text-foreground">{dailyDose > 0 ? dailyDose.toFixed(0) : "—"}%</div>
           <p className="text-[9px] text-muted-foreground">{dailyDose > 100 ? "⚠ Excede límite" : "Dentro de norma"}</p>
         </div>
-
         <div className="glass-card p-3">
           <span className="text-[10px] text-muted-foreground uppercase">Cumplimiento</span>
           <div className="text-xl font-bold font-mono text-foreground">{complianceRate.toFixed(0)}%</div>
@@ -192,7 +184,6 @@ const EnvironmentalModule: React.FC = () => {
             }} />
           </div>
         </div>
-
         <div className="glass-card p-3">
           <span className="text-[10px] text-muted-foreground uppercase">Mediciones</span>
           <div className="text-xl font-bold font-mono text-foreground">{readings.length}</div>
@@ -204,6 +195,11 @@ const EnvironmentalModule: React.FC = () => {
       <div className="glass-card p-5">
         <h3 className="font-display font-bold text-foreground mb-4 flex items-center gap-2">
           <Plus className="w-4 h-4 text-primary" /> Nueva Medición
+          {zoneMeasureType !== "both" && (
+            <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary/10 border border-primary/30 text-primary">
+              {MEASURE_TYPE_LABELS[zoneMeasureType]}
+            </span>
+          )}
         </h3>
         <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
           <div>
@@ -215,17 +211,21 @@ const EnvironmentalModule: React.FC = () => {
           <div>
             <label className="text-xs text-muted-foreground uppercase tracking-wider">Zona</label>
             <select value={zone} onChange={(e) => setZone(e.target.value)} className="input-glass mt-1">
-              {zones.map((z) => <option key={z.id} value={z.name}>{z.name}</option>)}
+              {zones.map((z) => <option key={z.id} value={z.name}>{z.name} ({MEASURE_TYPE_LABELS[z.measureType]})</option>)}
             </select>
           </div>
-          <div>
-            <label className="text-xs text-muted-foreground uppercase tracking-wider flex items-center gap-1"><Sun className="w-3 h-3" /> Lux</label>
-            <input type="number" value={lux} onChange={(e) => setLux(e.target.value)} className="input-glass mt-1" />
-          </div>
-          <div>
-            <label className="text-xs text-muted-foreground uppercase tracking-wider flex items-center gap-1"><Volume2 className="w-3 h-3" /> dB</label>
-            <input type="number" value={db} onChange={(e) => setDb(e.target.value)} className="input-glass mt-1" />
-          </div>
+          {zoneMeasureType !== "db" && (
+            <div>
+              <label className="text-xs text-muted-foreground uppercase tracking-wider flex items-center gap-1"><Sun className="w-3 h-3" /> Lux</label>
+              <input type="number" value={lux} onChange={(e) => setLux(e.target.value)} className="input-glass mt-1" />
+            </div>
+          )}
+          {zoneMeasureType !== "lux" && (
+            <div>
+              <label className="text-xs text-muted-foreground uppercase tracking-wider flex items-center gap-1"><Volume2 className="w-3 h-3" /> dB</label>
+              <input type="number" value={db} onChange={(e) => setDb(e.target.value)} className="input-glass mt-1" />
+            </div>
+          )}
           <div>
             <label className="text-xs text-muted-foreground uppercase tracking-wider">Exp. (h)</label>
             <input type="number" value={exposureHours} onChange={(e) => setExposureHours(e.target.value)} className="input-glass mt-1" min="0.5" max="12" step="0.5" />
@@ -251,7 +251,6 @@ const EnvironmentalModule: React.FC = () => {
           </button>
         </div>
 
-        {/* Zone summary cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           {zones.map((z) => {
             const zd = zoneOperatorData.find((zz) => zz.zone === z.name);
@@ -260,9 +259,14 @@ const EnvironmentalModule: React.FC = () => {
               <div key={z.id} className="p-3 rounded-lg bg-muted/20 border border-border/30">
                 <div className="flex items-center justify-between mb-1">
                   <p className="text-xs font-semibold text-foreground">{z.name}</p>
-                  <span className={`text-[10px] font-mono ${progress >= 100 ? "text-green-400" : "text-yellow-400"}`}>
-                    {zd?.count ?? 0}/{z.requiredSamples}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-muted/40 border border-border/30 text-muted-foreground">
+                      {z.measureType === "lux" ? "☀️" : z.measureType === "db" ? "🔊" : "☀️🔊"}
+                    </span>
+                    <span className={`text-[10px] font-mono ${progress >= 100 ? "text-green-400" : "text-yellow-400"}`}>
+                      {zd?.count ?? 0}/{z.requiredSamples}
+                    </span>
+                  </div>
                 </div>
                 <div className="w-full bg-muted rounded-full h-1.5 mb-2">
                   <div className="h-1.5 rounded-full transition-all" style={{
@@ -272,20 +276,19 @@ const EnvironmentalModule: React.FC = () => {
                 </div>
                 {zd && (
                   <div className="flex gap-3 text-[10px]">
-                    <span className="text-yellow-400 font-mono">☀️ {zd.avgLux} lux</span>
-                    <span className="text-blue-400 font-mono">🔊 {zd.avgDb} dB</span>
+                    {z.measureType !== "db" && <span className="text-yellow-400 font-mono">☀️ {zd.avgLux} lux</span>}
+                    {z.measureType !== "lux" && <span className="text-blue-400 font-mono">🔊 {zd.avgDb} dB</span>}
                   </div>
                 )}
-                {/* Per-operator breakdown */}
                 {zd && zd.byOperator.length > 0 && (
                   <div className="mt-2 space-y-1">
                     {zd.byOperator.map((bo) => (
                       <div key={bo.operatorId} className="flex items-center justify-between text-[10px]">
                         <span className="text-muted-foreground">{bo.operator}</span>
                         <div className="flex gap-2">
-                          <span className={complianceColor(getLuxCompliance(bo.avgLux))}>{bo.avgLux} lux</span>
-                          <span className={complianceColor(getDbCompliance(bo.avgDb))}>{bo.avgDb} dB</span>
-                          <span className="text-muted-foreground">LEQ:{bo.leq.toFixed(0)}</span>
+                          {z.measureType !== "db" && <span className={complianceColor(getLuxCompliance(bo.avgLux))}>{bo.avgLux} lux</span>}
+                          {z.measureType !== "lux" && <span className={complianceColor(getDbCompliance(bo.avgDb))}>{bo.avgDb} dB</span>}
+                          {z.measureType !== "lux" && <span className="text-muted-foreground">LEQ:{bo.leq.toFixed(0)}</span>}
                         </div>
                       </div>
                     ))}
@@ -303,13 +306,22 @@ const EnvironmentalModule: React.FC = () => {
                 <div key={z.id} className="flex items-center gap-2">
                   <input
                     value={z.name}
-                    onChange={(e) => updateZone(z.id, e.target.value, z.requiredSamples)}
+                    onChange={(e) => updateZone(z.id, { name: e.target.value })}
                     className="input-glass flex-1 text-xs"
                   />
+                  <select
+                    value={z.measureType}
+                    onChange={(e) => updateZone(z.id, { measureType: e.target.value as MeasureType })}
+                    className="input-glass w-32 text-xs"
+                  >
+                    <option value="both">☀️🔊 Ambos</option>
+                    <option value="lux">☀️ Solo Luz</option>
+                    <option value="db">🔊 Solo Sonido</option>
+                  </select>
                   <input
                     type="number"
                     value={z.requiredSamples}
-                    onChange={(e) => updateZone(z.id, z.name, Number(e.target.value) || 1)}
+                    onChange={(e) => updateZone(z.id, { requiredSamples: Number(e.target.value) || 1 })}
                     className="input-glass w-20 text-xs"
                     min="1"
                   />
@@ -322,6 +334,11 @@ const EnvironmentalModule: React.FC = () => {
             </div>
             <div className="flex items-center gap-2">
               <input value={newZoneName} onChange={(e) => setNewZoneName(e.target.value)} placeholder="Nueva zona" className="input-glass flex-1 text-xs" />
+              <select value={newZoneMeasureType} onChange={(e) => setNewZoneMeasureType(e.target.value as MeasureType)} className="input-glass w-32 text-xs">
+                <option value="both">Ambos</option>
+                <option value="lux">Solo Luz</option>
+                <option value="db">Solo Sonido</option>
+              </select>
               <input type="number" value={newZoneSamples} onChange={(e) => setNewZoneSamples(e.target.value)} className="input-glass w-20 text-xs" min="1" />
               <button onClick={handleAddZone} className="btn-primary-glass text-xs"><Plus className="w-3 h-3" /></button>
             </div>
@@ -329,98 +346,99 @@ const EnvironmentalModule: React.FC = () => {
         )}
       </div>
 
-      {/* Heatmap: Zones compliance */}
+      {/* Heatmaps */}
       {zoneOperatorData.length > 0 && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <div className="glass-card p-5">
-            <h3 className="font-display font-bold text-sm text-foreground mb-3">🗺️ Mapa de Calor — Luz por Zona</h3>
-            <div className="space-y-2">
-              {heatmapLuxData.map((h) => (
-                <div key={h.zone} className="flex items-center gap-3">
-                  <span className="text-xs text-muted-foreground w-32 truncate">{h.zone}</span>
-                  <div className="flex-1 h-8 rounded-lg relative overflow-hidden" style={{ background: heatColor(h.value, 100, 800) }}>
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <span className="text-xs font-bold text-white drop-shadow-lg">{h.value} lux</span>
+          {heatmapLuxData.length > 0 && (
+            <div className="glass-card p-5">
+              <h3 className="font-display font-bold text-sm text-foreground mb-3">🗺️ Mapa de Calor — Luz por Zona</h3>
+              <div className="space-y-2">
+                {heatmapLuxData.map((h) => (
+                  <div key={h.zone} className="flex items-center gap-3">
+                    <span className="text-xs text-muted-foreground w-32 truncate">{h.zone}</span>
+                    <div className="flex-1 h-8 rounded-lg relative overflow-hidden" style={{ background: heatColor(h.value, 100, 800) }}>
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <span className="text-xs font-bold text-white drop-shadow-lg">{h.value} lux</span>
+                      </div>
                     </div>
+                    <ComplianceIcon level={h.compliance} />
                   </div>
-                  <ComplianceIcon level={h.compliance} />
+                ))}
+                <div className="flex items-center gap-1 mt-2">
+                  <div className="h-3 flex-1 rounded" style={{ background: "linear-gradient(90deg, #22c55e 0%, #eab308 50%, #ef4444 100%)" }} />
+                  <span className="text-[9px] text-muted-foreground">100</span>
+                  <span className="text-[9px] text-muted-foreground ml-auto">800 lux</span>
                 </div>
-              ))}
-              <div className="flex items-center gap-1 mt-2">
-                <div className="h-3 flex-1 rounded" style={{ background: "linear-gradient(90deg, #22c55e 0%, #eab308 50%, #ef4444 100%)" }} />
-                <span className="text-[9px] text-muted-foreground">100</span>
-                <span className="text-[9px] text-muted-foreground ml-auto">800 lux</span>
               </div>
             </div>
-          </div>
-
-          <div className="glass-card p-5">
-            <h3 className="font-display font-bold text-sm text-foreground mb-3">🗺️ Mapa de Calor — Sonido por Zona</h3>
-            <div className="space-y-2">
-              {heatmapDbData.map((h) => (
-                <div key={h.zone} className="flex items-center gap-3">
-                  <span className="text-xs text-muted-foreground w-32 truncate">{h.zone}</span>
-                  <div className="flex-1 h-8 rounded-lg relative overflow-hidden" style={{ background: heatColor(h.value, 50, 100) }}>
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <span className="text-xs font-bold text-white drop-shadow-lg">{h.value} dB</span>
+          )}
+          {heatmapDbData.length > 0 && (
+            <div className="glass-card p-5">
+              <h3 className="font-display font-bold text-sm text-foreground mb-3">🗺️ Mapa de Calor — Sonido por Zona</h3>
+              <div className="space-y-2">
+                {heatmapDbData.map((h) => (
+                  <div key={h.zone} className="flex items-center gap-3">
+                    <span className="text-xs text-muted-foreground w-32 truncate">{h.zone}</span>
+                    <div className="flex-1 h-8 rounded-lg relative overflow-hidden" style={{ background: heatColor(h.value, 50, 100) }}>
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <span className="text-xs font-bold text-white drop-shadow-lg">{h.value} dB</span>
+                      </div>
                     </div>
+                    <ComplianceIcon level={h.compliance} />
                   </div>
-                  <ComplianceIcon level={h.compliance} />
+                ))}
+                <div className="flex items-center gap-1 mt-2">
+                  <div className="h-3 flex-1 rounded" style={{ background: "linear-gradient(90deg, #22c55e 0%, #eab308 50%, #ef4444 100%)" }} />
+                  <span className="text-[9px] text-muted-foreground">50</span>
+                  <span className="text-[9px] text-muted-foreground ml-auto">100 dB</span>
                 </div>
-              ))}
-              <div className="flex items-center gap-1 mt-2">
-                <div className="h-3 flex-1 rounded" style={{ background: "linear-gradient(90deg, #22c55e 0%, #eab308 50%, #ef4444 100%)" }} />
-                <span className="text-[9px] text-muted-foreground">50</span>
-                <span className="text-[9px] text-muted-foreground ml-auto">100 dB</span>
               </div>
             </div>
-          </div>
+          )}
         </div>
       )}
 
       {/* Zone bar charts */}
       {zoneBarData.length > 0 && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <div className="glass-card p-5">
-            <h3 className="font-display font-bold text-sm text-foreground mb-3">☀️ Promedio Lux por Zona</h3>
-            <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={zoneBarData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                <XAxis dataKey="name" tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 9 }} />
-                <YAxis tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 9 }} />
-                <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8 }} />
-                <Bar dataKey="lux" name="Prom. Lux" radius={[4, 4, 0, 0]}>
-                  {zoneBarData.map((entry, i) => (
-                    <Cell key={i} fill={entry.luxOk ? "#22c55e" : getLuxCompliance(entry.lux) === "warning" ? "#eab308" : "#ef4444"} />
-                  ))}
-                </Bar>
-                {/* Reference lines */}
-              </BarChart>
-            </ResponsiveContainer>
-            <div className="flex gap-3 text-[10px] text-muted-foreground mt-1">
-              <span>— Norma: {REGULATIONS.lux.min}-{REGULATIONS.lux.max} lux</span>
+          {zoneBarData.some((z) => z.measureType !== "db") && (
+            <div className="glass-card p-5">
+              <h3 className="font-display font-bold text-sm text-foreground mb-3">☀️ Promedio Lux por Zona</h3>
+              <ResponsiveContainer width="100%" height={220}>
+                <BarChart data={zoneBarData.filter((z) => z.measureType !== "db")}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                  <XAxis dataKey="name" tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 9 }} />
+                  <YAxis tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 9 }} />
+                  <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8 }} />
+                  <Bar dataKey="lux" name="Prom. Lux" radius={[4, 4, 0, 0]}>
+                    {zoneBarData.filter((z) => z.measureType !== "db").map((entry, i) => (
+                      <Cell key={i} fill={entry.luxOk ? "#22c55e" : getLuxCompliance(entry.lux) === "warning" ? "#eab308" : "#ef4444"} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+              <div className="text-[10px] text-muted-foreground mt-1">Norma: {REGULATIONS.lux.min}-{REGULATIONS.lux.max} lux</div>
             </div>
-          </div>
-
-          <div className="glass-card p-5">
-            <h3 className="font-display font-bold text-sm text-foreground mb-3">🔊 Promedio dB por Zona</h3>
-            <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={zoneBarData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                <XAxis dataKey="name" tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 9 }} />
-                <YAxis tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 9 }} domain={[0, 100]} />
-                <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8 }} />
-                <Bar dataKey="db" name="Prom. dB" radius={[4, 4, 0, 0]}>
-                  {zoneBarData.map((entry, i) => (
-                    <Cell key={i} fill={entry.dbOk ? "#22c55e" : getDbCompliance(entry.db) === "warning" ? "#eab308" : "#ef4444"} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-            <div className="flex gap-3 text-[10px] text-muted-foreground mt-1">
-              <span>— Límite: ≤{REGULATIONS.db8h.max} dB (8h)</span>
+          )}
+          {zoneBarData.some((z) => z.measureType !== "lux") && (
+            <div className="glass-card p-5">
+              <h3 className="font-display font-bold text-sm text-foreground mb-3">🔊 Promedio dB por Zona</h3>
+              <ResponsiveContainer width="100%" height={220}>
+                <BarChart data={zoneBarData.filter((z) => z.measureType !== "lux")}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                  <XAxis dataKey="name" tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 9 }} />
+                  <YAxis tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 9 }} domain={[0, 100]} />
+                  <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8 }} />
+                  <Bar dataKey="db" name="Prom. dB" radius={[4, 4, 0, 0]}>
+                    {zoneBarData.filter((z) => z.measureType !== "lux").map((entry, i) => (
+                      <Cell key={i} fill={entry.dbOk ? "#22c55e" : getDbCompliance(entry.db) === "warning" ? "#eab308" : "#ef4444"} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+              <div className="text-[10px] text-muted-foreground mt-1">Límite: ≤{REGULATIONS.db8h.max} dB (8h)</div>
             </div>
-          </div>
+          )}
         </div>
       )}
 
@@ -480,16 +498,16 @@ const EnvironmentalModule: React.FC = () => {
                     <td className="p-2 text-foreground">{r.operatorName}</td>
                     <td className="p-2 text-muted-foreground">{r.zone}</td>
                     <td className="p-2 text-center">
-                      <span className={`font-mono font-bold ${complianceColor(getLuxCompliance(r.lux))}`}>{r.lux}</span>
+                      <span className={`font-mono font-bold ${complianceColor(getLuxCompliance(r.lux))}`}>{r.lux || "—"}</span>
                     </td>
                     <td className="p-2 text-center">
-                      <span className={`font-mono font-bold ${complianceColor(getDbCompliance(r.db))}`}>{r.db}</span>
+                      <span className={`font-mono font-bold ${complianceColor(getDbCompliance(r.db))}`}>{r.db || "—"}</span>
                     </td>
                     <td className="p-2 text-center text-muted-foreground font-mono">{r.exposureHours}h</td>
                     <td className="p-2 text-center">
                       <div className="flex items-center justify-center gap-1">
-                        <ComplianceIcon level={getLuxCompliance(r.lux)} />
-                        <ComplianceIcon level={getDbCompliance(r.db)} />
+                        {r.lux > 0 && <ComplianceIcon level={getLuxCompliance(r.lux)} />}
+                        {r.db > 0 && <ComplianceIcon level={getDbCompliance(r.db)} />}
                       </div>
                     </td>
                     <td className="p-2 text-muted-foreground">{new Date(r.timestamp).toLocaleTimeString()}</td>
