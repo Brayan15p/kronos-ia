@@ -1,5 +1,7 @@
 import React, { createContext, useContext, useState, useCallback } from "react";
 
+export type MeasureType = "lux" | "db" | "both";
+
 export interface EnvironmentalReading {
   id: string;
   operatorId: number;
@@ -7,7 +9,7 @@ export interface EnvironmentalReading {
   zone: string;
   lux: number;
   db: number;
-  exposureHours: number; // daily exposure hours
+  exposureHours: number;
   timestamp: Date;
   notes: string;
 }
@@ -15,7 +17,8 @@ export interface EnvironmentalReading {
 export interface ZoneConfig {
   id: string;
   name: string;
-  requiredSamples: number; // how many measurements needed for this zone
+  requiredSamples: number;
+  measureType: MeasureType;
 }
 
 export interface MeasurementPoint3D {
@@ -35,7 +38,6 @@ export interface WorkstationConfig {
   measurementPoints: MeasurementPoint3D[];
 }
 
-// Colombian regulation limits
 export const REGULATIONS = {
   lux: { min: 300, max: 500, label: "Res. 2400/1979 - Trabajo fino" },
   db8h: { max: 85, label: "Res. 1792/1990 - 8h" },
@@ -58,7 +60,6 @@ export const getDbCompliance = (db: number): ComplianceLevel => {
   return "critical";
 };
 
-/** Calculate LEQ (equivalent continuous noise level) from multiple readings */
 export const calculateLEQ = (readings: { db: number; exposureHours: number }[]): number => {
   if (readings.length === 0) return 0;
   const totalHours = readings.reduce((s, r) => s + r.exposureHours, 0);
@@ -67,7 +68,6 @@ export const calculateLEQ = (readings: { db: number; exposureHours: number }[]):
   return 10 * Math.log10(sum / totalHours);
 };
 
-/** Daily noise dose percentage (based on 85 dB / 8h criterion) */
 export const calculateDailyDose = (leq: number, hours: number): number => {
   if (leq <= 0 || hours <= 0) return 0;
   const allowedHours = 8 / Math.pow(2, (leq - 85) / 3);
@@ -86,7 +86,7 @@ interface SSTState {
   updateMeasurementPoint: (wsId: number, pointId: string, lux: number, db: number) => void;
   removeMeasurementPoint: (wsId: number, pointId: string) => void;
   addZone: (zone: ZoneConfig) => void;
-  updateZone: (id: string, name: string, requiredSamples: number) => void;
+  updateZone: (id: string, updates: Partial<ZoneConfig>) => void;
   removeZone: (id: string) => void;
   clearSST: () => void;
 }
@@ -100,9 +100,9 @@ export const useSST = () => {
 };
 
 const DEFAULT_ZONES: ZoneConfig[] = [
-  { id: "z1", name: "Estación Principal", requiredSamples: 5 },
-  { id: "z2", name: "Área de Ensamble", requiredSamples: 3 },
-  { id: "z3", name: "Zona de Inspección", requiredSamples: 3 },
+  { id: "z1", name: "Estación Principal", requiredSamples: 5, measureType: "both" },
+  { id: "z2", name: "Área de Ensamble", requiredSamples: 3, measureType: "both" },
+  { id: "z3", name: "Zona de Inspección", requiredSamples: 3, measureType: "lux" },
 ];
 
 export const SSTProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -156,8 +156,8 @@ export const SSTProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setZones((prev) => [...prev, zone]);
   }, []);
 
-  const updateZone = useCallback((id: string, name: string, requiredSamples: number) => {
-    setZones((prev) => prev.map((z) => z.id === id ? { ...z, name, requiredSamples } : z));
+  const updateZone = useCallback((id: string, updates: Partial<ZoneConfig>) => {
+    setZones((prev) => prev.map((z) => z.id === id ? { ...z, ...updates } : z));
   }, []);
 
   const removeZone = useCallback((id: string) => {

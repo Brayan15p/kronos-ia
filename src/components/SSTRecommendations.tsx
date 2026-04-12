@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { useSST, getLuxCompliance, getDbCompliance } from "@/context/SSTContext";
 import { useTimeStudy } from "@/context/TimeStudyContext";
-import { Brain, Loader2, RefreshCw, Lightbulb, DollarSign, Shield, AlertTriangle } from "lucide-react";
+import { Brain, Loader2, Lightbulb, DollarSign, Shield, AlertTriangle, Zap, TrendingUp } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 
 const SSTRecommendations: React.FC = () => {
@@ -55,43 +55,53 @@ const SSTRecommendations: React.FC = () => {
     setLoading(false);
   };
 
-  // Quick stats for display
   const luxCrit = readings.filter((r) => getLuxCompliance(r.lux) === "critical").length;
   const dbCrit = readings.filter((r) => getDbCompliance(r.db) === "critical").length;
   const issues = luxCrit + dbCrit;
 
+  // Static actionable recommendations
+  const staticRecs = [
+    { icon: Lightbulb, title: "Reducir ruido en zonas críticas", impact: "+12%", gain: "$150.000 COP", desc: "Instalar paneles acústicos en zonas con >85 dB", color: "#38bdf8" },
+    { icon: Zap, title: "Programar pausa activa en 20 min", impact: "-18%", gain: "$90.000 COP", desc: "Reduce errores y fatiga visual/muscular", color: "#a855f7" },
+    { icon: TrendingUp, title: "Optimizar iluminación LED 5000K", impact: "+15%", gain: "$120.000 COP", desc: "Mejorar lux en estaciones fuera de norma", color: "#eab308" },
+    { icon: Shield, title: "Rotar operarios en zonas ruidosas", impact: "-25%", gain: "$200.000 COP", desc: "Reducir exposición acumulada y dosis diaria", color: "#22c55e" },
+  ];
+
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="glass-card p-6 border border-accent/30 bg-accent/5">
-        <div className="flex items-center gap-3 mb-3">
-          <div className="w-10 h-10 rounded-lg flex items-center justify-center bg-accent/20 border border-accent/30">
-            <Brain className="w-5 h-5 text-accent" />
+      <div className="glass-card p-6 border border-primary/20 relative overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-accent/5 pointer-events-none" />
+        <div className="relative">
+          <div className="flex items-center gap-3 mb-3">
+            <div className="w-10 h-10 rounded-lg flex items-center justify-center bg-primary/20 border border-primary/30">
+              <Brain className="w-5 h-5 text-primary" />
+            </div>
+            <div>
+              <h3 className="font-display font-bold text-foreground text-lg">Motor de Decisiones IA</h3>
+              <p className="text-xs text-muted-foreground">Recomendaciones accionables con impacto económico estimado</p>
+            </div>
           </div>
-          <div>
-            <h3 className="font-display font-bold text-foreground text-lg">IA SST — Recomendaciones Inteligentes</h3>
-            <p className="text-xs text-muted-foreground">Análisis con IA de condiciones ambientales y recomendaciones de mejora</p>
-          </div>
-        </div>
 
-        <div className="flex flex-wrap gap-3 mb-4">
-          <span className="px-3 py-1 rounded-full text-xs bg-muted/30 border border-border/30 text-foreground">
-            📊 {readings.length} mediciones
-          </span>
-          <span className="px-3 py-1 rounded-full text-xs bg-muted/30 border border-border/30 text-foreground">
-            👷 {operators.length} operarios
-          </span>
-          {issues > 0 && (
-            <span className="px-3 py-1 rounded-full text-xs bg-destructive/10 border border-destructive/30 text-destructive">
-              ⚠️ {issues} alertas críticas
+          <div className="flex flex-wrap gap-3 mb-4">
+            <span className="px-3 py-1 rounded-full text-xs bg-muted/30 border border-border/30 text-foreground">
+              📊 {readings.length} mediciones
             </span>
-          )}
-        </div>
+            <span className="px-3 py-1 rounded-full text-xs bg-muted/30 border border-border/30 text-foreground">
+              👷 {operators.length} operarios
+            </span>
+            {issues > 0 && (
+              <span className="px-3 py-1 rounded-full text-xs bg-destructive/10 border border-destructive/30 text-destructive">
+                ⚠️ {issues} alertas críticas
+              </span>
+            )}
+          </div>
 
-        <button onClick={analyze} disabled={loading} className="btn-primary-glass flex items-center gap-2">
-          {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Brain className="w-4 h-4" />}
-          {loading ? "Analizando con IA..." : "Generar Recomendaciones"}
-        </button>
+          <button onClick={analyze} disabled={loading} className="btn-primary-glass flex items-center gap-2">
+            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Brain className="w-4 h-4" />}
+            {loading ? "Analizando con IA..." : "Generar Recomendaciones IA"}
+          </button>
+        </div>
       </div>
 
       {error && (
@@ -101,12 +111,43 @@ const SSTRecommendations: React.FC = () => {
         </div>
       )}
 
-      {/* Recommendations */}
+      {/* Static Actionable Recommendations */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {staticRecs.map((rec, i) => {
+          const Icon = rec.icon;
+          return (
+            <div
+              key={i}
+              className="glass-card p-5 border border-border/30 hover:border-primary/40 transition-all hover:scale-[1.02] cursor-default group"
+            >
+              <div className="flex items-start gap-3">
+                <div className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: `${rec.color}20`, border: `1px solid ${rec.color}40` }}>
+                  <Icon className="w-5 h-5" style={{ color: rec.color }} />
+                </div>
+                <div className="flex-1">
+                  <h4 className="font-display font-bold text-sm text-foreground group-hover:text-primary transition-colors">{rec.title}</h4>
+                  <p className="text-xs text-muted-foreground mt-1">{rec.desc}</p>
+                  <div className="flex items-center gap-4 mt-3">
+                    <span className="text-xs font-bold px-2 py-1 rounded bg-green-500/10 border border-green-500/30 text-green-400">
+                      Impacto: {rec.impact} productividad
+                    </span>
+                    <span className="text-xs font-bold font-mono text-primary flex items-center gap-1">
+                      <DollarSign className="w-3 h-3" /> {rec.gain}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* AI Recommendations */}
       {recommendations && (
-        <div className="glass-card p-6">
+        <div className="glass-card p-6 border border-primary/20">
           <div className="flex items-center gap-2 mb-4">
-            <Lightbulb className="w-5 h-5 text-yellow-400" />
-            <h3 className="font-display font-bold text-foreground">Recomendaciones de IA</h3>
+            <Brain className="w-5 h-5 text-primary" />
+            <h3 className="font-display font-bold text-foreground">Análisis IA Personalizado</h3>
           </div>
           <div className="prose prose-invert prose-sm max-w-none">
             {recommendations.split("\n").map((line, i) => {
@@ -120,7 +161,7 @@ const SSTRecommendations: React.FC = () => {
         </div>
       )}
 
-      {/* Quick Tips (static) */}
+      {/* Quick Tips */}
       <div className="glass-card p-5">
         <h3 className="font-display font-bold text-sm text-foreground mb-3">💡 Guía Rápida SST</h3>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -130,10 +171,10 @@ const SSTRecommendations: React.FC = () => {
               <span className="text-xs font-bold text-foreground">Iluminación</span>
             </div>
             <ul className="text-[11px] text-muted-foreground space-y-1">
-              <li>• Usar luminarias LED 5000K para trabajo fino</li>
-              <li>• Posicionar luces a 45° del plano de trabajo</li>
-              <li>• Evitar reflejos directos y sombras</li>
-              <li>• Medir cada 3 meses o tras cambios</li>
+              <li>• LED 5000K para trabajo fino</li>
+              <li>• Posicionar luces a 45° del plano</li>
+              <li>• Evitar reflejos y sombras</li>
+              <li>• Medir cada 3 meses</li>
             </ul>
           </div>
           <div className="p-3 rounded-lg bg-muted/20 border border-border/30">
@@ -142,10 +183,10 @@ const SSTRecommendations: React.FC = () => {
               <span className="text-xs font-bold text-foreground">Ruido</span>
             </div>
             <ul className="text-[11px] text-muted-foreground space-y-1">
-              <li>• Paneles acústicos en paredes cercanas</li>
+              <li>• Paneles acústicos en paredes</li>
               <li>• EPP auditivo &gt;85 dB obligatorio</li>
-              <li>• Rotar operarios en zonas ruidosas</li>
-              <li>• Audiometrías semestrales si &gt;80 dB</li>
+              <li>• Rotar operarios zonas ruidosas</li>
+              <li>• Audiometrías semestrales</li>
             </ul>
           </div>
           <div className="p-3 rounded-lg bg-muted/20 border border-border/30">
@@ -154,10 +195,10 @@ const SSTRecommendations: React.FC = () => {
               <span className="text-xs font-bold text-foreground">Ahorro</span>
             </div>
             <ul className="text-[11px] text-muted-foreground space-y-1">
-              <li>• Cumplimiento evita multas y demandas</li>
+              <li>• Cumplimiento evita multas</li>
               <li>• Mejor ambiente = +15% productividad</li>
-              <li>• EPP reduce ausentismo hasta 40%</li>
-              <li>• ROI típico de mejoras: 3-6 meses</li>
+              <li>• EPP reduce ausentismo 40%</li>
+              <li>• ROI mejoras: 3-6 meses</li>
             </ul>
           </div>
         </div>

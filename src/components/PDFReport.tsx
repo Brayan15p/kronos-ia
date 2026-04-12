@@ -18,7 +18,6 @@ const PDFReport: React.FC = () => {
   const generateSuggestions = () => {
     const suggestions: string[] = [];
 
-    // Operator comparison
     if (operators.length >= 2) {
       const opAvgs = operators.map((op) => {
         const opCycles = cycles.filter((c) => c.operatorId === op.id);
@@ -33,14 +32,12 @@ const PDFReport: React.FC = () => {
       }
     }
 
-    // Quality
     const qualityRate = qualityChecks.length > 0
       ? (qualityChecks.filter((q) => q.overallPass).length / qualityChecks.length) * 100 : 100;
     if (qualityRate < 80) {
       suggestions.push("Tasa de calidad por debajo del 80%. Implementar Poka-Yoke en los pasos con más defectos.");
     }
 
-    // Defects
     if (defects.length > 0) {
       const typeMap = new Map<string, number>();
       defects.forEach((d) => typeMap.set(d.type, (typeMap.get(d.type) ?? 0) + 1));
@@ -48,7 +45,6 @@ const PDFReport: React.FC = () => {
       suggestions.push(`Defecto más frecuente: "${top[0]}" (${top[1]}x). Aplicar 5 Porqués para causa raíz.`);
     }
 
-    // Step bottleneck
     const stepAvgs = CRANE_STEPS.map((step) => {
       const times = cycles.flatMap((c) => c.steps).filter((s) => s.stepNumber === step.number).map((s) => s.duration);
       return { ...step, avg: times.length > 0 ? times.reduce((a, b) => a + b, 0) / times.length : 0 };
@@ -59,7 +55,6 @@ const PDFReport: React.FC = () => {
       suggestions.push(`Cuello de botella: Paso ${bottleneck.number} (${bottleneck.name}) — ${bottleneck.avg.toFixed(1)}s promedio. Priorizar mejora aquí.`);
     }
 
-    // Cost
     const avgHourlyCost = operators.length > 0 ? operators.reduce((s, o) => s + o.hourlyCost, 0) / operators.length : 15000;
     const avgTime = cycles.length > 0 ? cycles.reduce((s, c) => s + c.duration, 0) / cycles.length : 0;
     const excess = Math.max(0, avgTime - costConfig.targetCycleTime);
@@ -78,7 +73,7 @@ const PDFReport: React.FC = () => {
 
     doc.setFontSize(22);
     doc.setTextColor(0, 200, 220);
-    doc.text("NEXORA.AI — Reporte de Inteligencia Industrial", pageWidth / 2, 20, { align: "center" });
+    doc.text("KRONOS.AI — Reporte de Inteligencia Industrial", pageWidth / 2, 20, { align: "center" });
 
     doc.setFontSize(10);
     doc.setTextColor(150, 150, 150);
@@ -87,7 +82,6 @@ const PDFReport: React.FC = () => {
 
     let y = 45;
 
-    // Summary
     const totalCycles = cycles.length;
     const avgTime = totalCycles > 0 ? cycles.reduce((s, c) => s + c.duration, 0) / totalCycles : 0;
     const bestTime = totalCycles > 0 ? Math.min(...cycles.map((c) => c.duration)) : 0;
@@ -116,7 +110,6 @@ const PDFReport: React.FC = () => {
     });
     y = (doc as any).lastAutoTable.finalY + 10;
 
-    // Cycles
     if (cycles.length > 0) {
       if (y > 230) { doc.addPage(); y = 20; }
       doc.setFontSize(14);
@@ -142,7 +135,6 @@ const PDFReport: React.FC = () => {
       y = (doc as any).lastAutoTable.finalY + 10;
     }
 
-    // Defects
     if (defects.length > 0) {
       if (y > 230) { doc.addPage(); y = 20; }
       doc.setFontSize(14);
@@ -160,7 +152,6 @@ const PDFReport: React.FC = () => {
       y = (doc as any).lastAutoTable.finalY + 10;
     }
 
-    // Suggestions
     if (y > 210) { doc.addPage(); y = 20; }
     const suggestions = generateSuggestions();
     doc.setFontSize(14);
@@ -179,9 +170,9 @@ const PDFReport: React.FC = () => {
 
     doc.setFontSize(7);
     doc.setTextColor(150, 150, 150);
-    doc.text("Generado por NEXORA.AI — Industrial Intelligence Platform", pageWidth / 2, 290, { align: "center" });
+    doc.text("Generado por KRONOS.AI — Industrial Intelligence Platform", pageWidth / 2, 290, { align: "center" });
 
-    doc.save(`nexora_reporte_${new Date().toISOString().slice(0, 10)}.pdf`);
+    doc.save(`kronos_reporte_${new Date().toISOString().slice(0, 10)}.pdf`);
   };
 
   const suggestions = generateSuggestions();

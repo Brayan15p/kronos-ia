@@ -2,17 +2,17 @@ import React, { useState } from "react";
 import { useSST, getLuxCompliance, getDbCompliance } from "@/context/SSTContext";
 import { useTimeStudy } from "@/context/TimeStudyContext";
 import { DollarSign, TrendingDown, TrendingUp, Shield, AlertTriangle, Lightbulb } from "lucide-react";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from "recharts";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 
 const COSTS = {
-  absenteeismPerDay: 80000, // COP per day absent
-  hearingLossClaimAvg: 25000000, // COP
-  eyeStrainTreatment: 500000, // COP per case
-  luminaire: 350000, // COP per luminaire
-  acousticPanel: 280000, // COP per panel
-  eppHearing: 45000, // COP per set
-  eppVision: 85000, // COP per set
-  productivityLossPercent: 0.12, // 12% loss from poor environment
+  absenteeismPerDay: 80000,
+  hearingLossClaimAvg: 25000000,
+  eyeStrainTreatment: 500000,
+  luminaire: 350000,
+  acousticPanel: 280000,
+  eppHearing: 45000,
+  eppVision: 85000,
+  productivityLossPercent: 0.12,
 };
 
 const COLORS = ["#ef4444", "#eab308", "#22c55e", "#3b82f6", "#a855f7"];
@@ -28,11 +28,9 @@ const ErgonomicCostAnalysis: React.FC = () => {
   const dbWarning = readings.filter((r) => getDbCompliance(r.db) === "warning").length;
   const total = readings.length || 1;
 
-  // Risk calculations
   const luxRiskRate = (luxCritical * 0.3 + luxWarning * 0.1) / total;
   const dbRiskRate = (dbCritical * 0.35 + dbWarning * 0.12) / total;
 
-  // Monthly costs from non-compliance
   const absenteeismMonthly = Math.round((luxRiskRate + dbRiskRate) * operators.length * 2 * COSTS.absenteeismPerDay);
   const productivityLoss = Math.round(
     operators.reduce((s, o) => s + o.hourlyCost, 0) * 160 * COSTS.productivityLossPercent * ((luxRiskRate + dbRiskRate) / 2)
@@ -46,7 +44,6 @@ const ErgonomicCostAnalysis: React.FC = () => {
   const totalMonthlyLoss = absenteeismMonthly + productivityLoss + eppMonthly + legalRisk;
   const totalProjected = totalMonthlyLoss * projMonths;
 
-  // Improvement costs (one-time)
   const luminairesNeeded = luxCritical > 0 ? Math.max(2, Math.ceil(operators.length * 1.5)) : 0;
   const panelsNeeded = dbCritical > 0 ? Math.max(4, operators.length * 2) : 0;
   const improvementCost = luminairesNeeded * COSTS.luminaire + panelsNeeded * COSTS.acousticPanel;
@@ -61,7 +58,7 @@ const ErgonomicCostAnalysis: React.FC = () => {
   ].filter((d) => d.value > 0);
 
   const improvementItems = [
-    ...(luminairesNeeded > 0 ? [{ name: `${luminairesNeeded} Luminarias`, cost: luminairesNeeded * COSTS.luminaire }] : []),
+    ...(luminairesNeeded > 0 ? [{ name: `${luminairesNeeded} Luminarias LED`, cost: luminairesNeeded * COSTS.luminaire }] : []),
     ...(panelsNeeded > 0 ? [{ name: `${panelsNeeded} Paneles acústicos`, cost: panelsNeeded * COSTS.acousticPanel }] : []),
     ...(dbCritical > 0 ? [{ name: `${operators.length} sets EPP auditivo`, cost: operators.length * COSTS.eppHearing }] : []),
   ];
@@ -72,8 +69,8 @@ const ErgonomicCostAnalysis: React.FC = () => {
     return (
       <div className="glass-card p-12 text-center">
         <DollarSign className="w-12 h-12 mx-auto text-muted-foreground mb-4 opacity-40" />
-        <h3 className="font-display font-bold text-foreground text-lg mb-2">Costos Ergonómicos</h3>
-        <p className="text-sm text-muted-foreground">Registra mediciones ambientales para ver el análisis de costos.</p>
+        <h3 className="font-display font-bold text-foreground text-lg mb-2">Fuga de Capital</h3>
+        <p className="text-sm text-muted-foreground">Registra mediciones ambientales para calcular el impacto económico.</p>
       </div>
     );
   }
@@ -87,28 +84,28 @@ const ErgonomicCostAnalysis: React.FC = () => {
             <TrendingDown className="w-4 h-4 text-destructive" />
             <span className="text-xs text-muted-foreground uppercase">Pérdida Mensual</span>
           </div>
-          <div className="text-xl font-bold font-mono text-destructive">{fmt(totalMonthlyLoss)}</div>
+          <div className="text-2xl font-bold font-mono text-destructive">{fmt(totalMonthlyLoss)}</div>
         </div>
-        <div className="glass-card p-4 border border-warning/30 bg-warning/5">
+        <div className="glass-card p-4 border border-yellow-500/30 bg-yellow-500/5">
           <div className="flex items-center gap-2 mb-1">
             <AlertTriangle className="w-4 h-4 text-yellow-400" />
             <span className="text-xs text-muted-foreground uppercase">Proyección {projMonths}m</span>
           </div>
-          <div className="text-xl font-bold font-mono text-yellow-400">{fmt(totalProjected)}</div>
+          <div className="text-2xl font-bold font-mono text-yellow-400">{fmt(totalProjected)}</div>
         </div>
         <div className="glass-card p-4 border border-primary/30 bg-primary/5">
           <div className="flex items-center gap-2 mb-1">
             <Lightbulb className="w-4 h-4 text-primary" />
             <span className="text-xs text-muted-foreground uppercase">Costo Mejora</span>
           </div>
-          <div className="text-xl font-bold font-mono text-primary">{fmt(improvementCost)}</div>
+          <div className="text-2xl font-bold font-mono text-primary">{fmt(improvementCost)}</div>
         </div>
         <div className="glass-card p-4 border border-green-500/30 bg-green-500/5">
           <div className="flex items-center gap-2 mb-1">
             <TrendingUp className="w-4 h-4 text-green-400" />
             <span className="text-xs text-muted-foreground uppercase">ROI</span>
           </div>
-          <div className="text-xl font-bold font-mono text-green-400">{roi} meses</div>
+          <div className="text-2xl font-bold font-mono text-green-400">{roi} meses</div>
           <p className="text-[10px] text-muted-foreground">Ahorro anual: {fmt(annualSaving)}</p>
         </div>
       </div>
@@ -121,7 +118,6 @@ const ErgonomicCostAnalysis: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Loss Breakdown */}
         <div className="glass-card p-5">
           <h3 className="font-display font-bold text-sm text-foreground mb-3">💸 Distribución de Pérdidas</h3>
           <ResponsiveContainer width="100%" height={220}>
@@ -134,7 +130,6 @@ const ErgonomicCostAnalysis: React.FC = () => {
           </ResponsiveContainer>
         </div>
 
-        {/* Improvement Plan */}
         <div className="glass-card p-5">
           <h3 className="font-display font-bold text-sm text-foreground mb-3">🔧 Plan de Mejora</h3>
           {improvementItems.length === 0 ? (
@@ -155,7 +150,7 @@ const ErgonomicCostAnalysis: React.FC = () => {
                 <span className="text-sm font-mono font-bold text-primary">{fmt(improvementCost)}</span>
               </div>
               <p className="text-xs text-muted-foreground text-center mt-2">
-                Retorno de inversión en <span className="text-green-400 font-bold">{roi} meses</span> · Ahorro anual: <span className="text-green-400 font-bold">{fmt(annualSaving)}</span>
+                Retorno en <span className="text-green-400 font-bold">{roi} meses</span> · Ahorro anual: <span className="text-green-400 font-bold">{fmt(annualSaving)}</span>
               </p>
             </div>
           )}

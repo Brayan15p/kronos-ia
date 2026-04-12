@@ -3,7 +3,7 @@ import {
   Timer, ClipboardCheck, AlertTriangle, BarChart3, FileDown,
   Trash2, DollarSign, Dice5, Brain, TrendingUp, Plus, X, Users,
   Zap, ChevronLeft, ChevronRight, Settings2, PenLine, Edit2,
-  Sun, Volume2, Box, Shield, Lightbulb,
+  Sun, Volume2, Eye, Shield, Lightbulb, Activity,
 } from "lucide-react";
 import { TimeStudyProvider, useTimeStudy } from "@/context/TimeStudyContext";
 import { SSTProvider } from "@/context/SSTContext";
@@ -33,11 +33,11 @@ const TABS: { id: TabId; label: string; icon: React.ElementType; category: strin
   { id: "steps", label: "Config. Pasos", icon: Settings2, category: "Operaciones" },
   { id: "quality", label: "Calidad", icon: ClipboardCheck, category: "Operaciones" },
   { id: "defects", label: "Defectos", icon: AlertTriangle, category: "Operaciones" },
-  { id: "environment", label: "Ambiente", icon: Sun, category: "Ergonomía SST" },
-  { id: "workspace3d", label: "Modelo 3D", icon: Box, category: "Ergonomía SST" },
-  { id: "sst-dashboard", label: "Dashboard SST", icon: Shield, category: "Ergonomía SST" },
-  { id: "ergo-cost", label: "Costos Ergonómicos", icon: DollarSign, category: "Ergonomía SST" },
-  { id: "sst-ai", label: "IA SST", icon: Brain, category: "Ergonomía SST" },
+  { id: "environment", label: "Radar Ambiental", icon: Activity, category: "Ergonomía SST" },
+  { id: "workspace3d", label: "Visión Operativa", icon: Eye, category: "Ergonomía SST" },
+  { id: "sst-dashboard", label: "Centro de Mando", icon: Shield, category: "Ergonomía SST" },
+  { id: "ergo-cost", label: "Fuga de Capital", icon: DollarSign, category: "Ergonomía SST" },
+  { id: "sst-ai", label: "Motor IA", icon: Brain, category: "Ergonomía SST" },
   { id: "cost", label: "Fuga de Dinero", icon: DollarSign, category: "Inteligencia" },
   { id: "montecarlo", label: "Monte Carlo", icon: Dice5, category: "Inteligencia" },
   { id: "fatigue", label: "Fatiga & Training", icon: Brain, category: "Inteligencia" },
@@ -75,7 +75,6 @@ const AppContent: React.FC = () => {
           sidebarOpen ? "w-64" : "w-16"
         }`}
       >
-        {/* Logo */}
         <div className="p-4 border-b border-border/30">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-lg flex items-center justify-center bg-primary/10 border border-primary/20 glow-primary flex-shrink-0">
@@ -90,7 +89,6 @@ const AppContent: React.FC = () => {
           </div>
         </div>
 
-        {/* Navigation */}
         <nav className="flex-1 p-3 space-y-4 overflow-y-auto scroll-thin">
           {categories.map((cat) => (
             <div key={cat}>
@@ -118,7 +116,6 @@ const AppContent: React.FC = () => {
           ))}
         </nav>
 
-        {/* Sidebar footer */}
         <div className="p-3 border-t border-border/30">
           {sidebarOpen && (
             <div className="glass-card px-3 py-2 mb-2">
@@ -139,7 +136,6 @@ const AppContent: React.FC = () => {
 
       {/* Main content */}
       <div className="flex-1 flex flex-col min-w-0">
-        {/* Top bar */}
         <header className="border-b border-border/30 glass-panel rounded-none px-6 py-3 flex items-center justify-between">
           <div>
             <h2 className="text-lg font-bold font-display text-foreground">
@@ -162,7 +158,6 @@ const AppContent: React.FC = () => {
           </div>
         </header>
 
-        {/* Add operator modal */}
         {showAddOp && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/60 backdrop-blur-sm">
             <div className="glass-card p-6 w-full max-w-sm space-y-4 animate-fade-in">
@@ -197,7 +192,6 @@ const AppContent: React.FC = () => {
           </div>
         )}
 
-        {/* Content area */}
         <main className="flex-1 overflow-y-auto scroll-thin p-6">
           <div className="max-w-7xl mx-auto animate-fade-in">
             {activeTab === "timer" && <StepTimer />}
