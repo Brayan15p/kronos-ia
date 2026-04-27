@@ -24,8 +24,10 @@ import Workspace3DModel from "@/components/Workspace3DModel";
 import SSTDashboard from "@/components/SSTDashboard";
 import ErgonomicCostAnalysis from "@/components/ErgonomicCostAnalysis";
 import SSTRecommendations from "@/components/SSTRecommendations";
+import VisionAIDashboard from "@/components/VisionAI/VisionAIDashboard";
+import KPICenterDashboard from "@/components/KPICenter/KPICenterDashboard";
 
-type TabId = "timer" | "manual" | "steps" | "cost" | "montecarlo" | "dashboard" | "fatigue" | "quality" | "defects" | "optimizer" | "incentives" | "report" | "environment" | "workspace3d" | "sst-dashboard" | "ergo-cost" | "sst-ai";
+type TabId = "timer" | "manual" | "steps" | "cost" | "montecarlo" | "dashboard" | "fatigue" | "quality" | "defects" | "optimizer" | "incentives" | "report" | "environment" | "workspace3d" | "sst-dashboard" | "ergo-cost" | "sst-ai" | "vision-ai" | "kpi-center";
 
 const TABS: { id: TabId; label: string; icon: React.ElementType; category: string }[] = [
   { id: "timer", label: "Cronómetro", icon: Timer, category: "Operaciones" },
@@ -38,6 +40,8 @@ const TABS: { id: TabId; label: string; icon: React.ElementType; category: strin
   { id: "sst-dashboard", label: "Centro de Mando", icon: Shield, category: "Ergonomía SST" },
   { id: "ergo-cost", label: "Fuga de Capital", icon: DollarSign, category: "Ergonomía SST" },
   { id: "sst-ai", label: "Motor IA", icon: Brain, category: "Ergonomía SST" },
+  { id: "vision-ai", label: "Vision AI", icon: Eye, category: "Ergonomía SST" },
+  { id: "kpi-center", label: "KPI Center", icon: BarChart3, category: "Inteligencia" },
   { id: "cost", label: "Fuga de Dinero", icon: DollarSign, category: "Inteligencia" },
   { id: "montecarlo", label: "Monte Carlo", icon: Dice5, category: "Inteligencia" },
   { id: "fatigue", label: "Fatiga & Training", icon: Brain, category: "Inteligencia" },
@@ -204,6 +208,8 @@ const AppContent: React.FC = () => {
             {activeTab === "sst-dashboard" && <SSTDashboard />}
             {activeTab === "ergo-cost" && <ErgonomicCostAnalysis />}
             {activeTab === "sst-ai" && <SSTRecommendations />}
+            {activeTab === "vision-ai" && <VisionAIDashboard />}
+            {activeTab === "kpi-center" && <KPICenterDashboard />}
             {activeTab === "cost" && <CostAnalysis />}
             {activeTab === "montecarlo" && <MonteCarloSimulator />}
             {activeTab === "fatigue" && <FatigueDetection />}

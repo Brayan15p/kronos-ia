@@ -1,8 +1,17 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useSST, getLuxCompliance, getDbCompliance } from "@/context/SSTContext";
 import { useTimeStudy } from "@/context/TimeStudyContext";
 import { Brain, Loader2, Lightbulb, DollarSign, Shield, AlertTriangle, Zap, TrendingUp } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+
+const PHASES = [
+  { label: "Leyendo datos ambientales…",       icon: "🔬", duration: 3000 },
+  { label: "Evaluando exposición sonora…",      icon: "🔊", duration: 3000 },
+  { label: "Calculando índices ergonómicos…",   icon: "📐", duration: 3000 },
+  { label: "Construyendo modelo predictivo…",   icon: "🧠", duration: 3000 },
+  { label: "Formulando recomendaciones IA…",    icon: "⚡", duration: 3000 },
+];
+const MIN_THINK_MS = 15000;
 
 const SSTRecommendations: React.FC = () => {
   const { readings, workstations } = useSST();
@@ -10,6 +19,9 @@ const SSTRecommendations: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [recommendations, setRecommendations] = useState<string>("");
   const [error, setError] = useState("");
+  const [phaseIdx, setPhaseIdx] = useState(0);
+  const [progress, setProgress] = useState(0);
+  const phaseTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const analyze = async () => {
     if (readings.length === 0) {
@@ -19,6 +31,16 @@ const SSTRecommendations: React.FC = () => {
     setLoading(true);
     setError("");
     setRecommendations("");
+    setPhaseIdx(0);
+    setProgress(0);
+
+    // Animated phases — one every 3 seconds, total ≥ 15s
+    let idx = 0;
+    phaseTimerRef.current = setInterval(() => {
+      idx++;
+      if (idx < PHASES.length) setPhaseIdx(idx);
+      setProgress(Math.min(92, (idx / PHASES.length) * 100));
+    }, 3000);
 
     const summary = {
       totalReadings: readings.length,
@@ -38,9 +60,13 @@ const SSTRecommendations: React.FC = () => {
     };
 
     try {
-      const resp = await supabase.functions.invoke("sst-recommendations", {
-        body: { summary },
-      });
+      const [resp] = await Promise.all([
+        supabase.functions.invoke("sst-recommendations", { body: { summary } }),
+        new Promise<void>((r) => setTimeout(r, MIN_THINK_MS)),
+      ]);
+
+      if (phaseTimerRef.current) clearInterval(phaseTimerRef.current);
+      setProgress(100);
 
       if (resp.error) {
         setError(resp.error.message || "Error al conectar con IA");
@@ -50,6 +76,7 @@ const SSTRecommendations: React.FC = () => {
 
       setRecommendations(resp.data?.recommendations || "No se generaron recomendaciones.");
     } catch (e: any) {
+      if (phaseTimerRef.current) clearInterval(phaseTimerRef.current);
       setError(e.message || "Error inesperado");
     }
     setLoading(false);
@@ -99,8 +126,38 @@ const SSTRecommendations: React.FC = () => {
 
           <button onClick={analyze} disabled={loading} className="btn-primary-glass flex items-center gap-2">
             {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Brain className="w-4 h-4" />}
-            {loading ? "Analizando con IA..." : "Generar Recomendaciones IA"}
+            {loading ? "Procesando…" : "Generar Recomendaciones IA"}
           </button>
+
+          {loading && (
+            <div className="mt-4 space-y-3">
+              <div className="flex items-center gap-3">
+                <span className="text-xl">{PHASES[phaseIdx]?.icon}</span>
+                <div className="flex-1">
+                  <p className="text-sm font-semibold text-primary animate-pulse">{PHASES[phaseIdx]?.label}</p>
+                  <div className="mt-1.5 h-1.5 rounded-full bg-muted/30 overflow-hidden">
+                    <div
+                      className="h-full rounded-full bg-primary transition-all duration-1000"
+                      style={{ width: `${progress}%`, boxShadow: "0 0 8px var(--primary)" }}
+                    />
+                  </div>
+                </div>
+                <span className="text-xs font-mono text-muted-foreground">{Math.round(progress)}%</span>
+              </div>
+              <div className="flex gap-1.5">
+                {PHASES.map((p, i) => (
+                  <div
+                    key={i}
+                    className="flex-1 h-1 rounded-full transition-all duration-500"
+                    style={{ background: i <= phaseIdx ? "var(--primary)" : "rgba(255,255,255,0.08)" }}
+                  />
+                ))}
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                La IA analiza {readings.length} mediciones y {operators.length} operarios antes de decidir…
+              </p>
+            </div>
+          )}
         </div>
       </div>
 
