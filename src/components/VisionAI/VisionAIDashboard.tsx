@@ -7,15 +7,16 @@ import PostureAnalyzer from './PostureAnalyzer';
 import ExpertComparison from './ExpertComparison';
 import VirtualObjectSim from './VirtualObjectSim';
 import VisionReport from './VisionReport';
+import CalibrationPanel from './CalibrationPanel';
 import {
   VisionResults, VirtualObjectType, TherbligEvent, TherbligType,
   EmotionState, PostureScore, HeadPose, EyeState, VisionSession,
-  SessionSnapshot, ExpertTemplate,
+  SessionSnapshot, ExpertTemplate, ClassifierConfig, DEFAULT_CLASSIFIER_CONFIG,
 } from './types';
 import { classifyTherblig, calculateRULA, analyzeFace, THERBLIG_INFO, ema } from './utils';
 
-const DEBOUNCE_FRAMES  = 6;   // reduced from 12 → snappier
 const SNAPSHOT_INTERVAL = 5000;
+const CONFIG_STORAGE_KEY = 'kronos_vision_config_v1';
 
 const VisionAIDashboard: React.FC = () => {
   const [isActive,      setIsActive]      = useState(false);
@@ -39,11 +40,23 @@ const VisionAIDashboard: React.FC = () => {
   const [expertTemplate,  setExpertTemplate]  = useState<ExpertTemplate | null>(null);
   const [session, setSession] = useState<VisionSession>({ startTime: Date.now(), endTime: null, snapshots: [], therbligs: [] });
 
+  // Adjustable classifier config (read inside handleResults via ref to avoid stale closures).
+  // Se restaura desde localStorage para que la calibración persista entre sesiones.
+  const [classifierConfig, setClassifierConfig] = useState<ClassifierConfig>(() => {
+    try {
+      const raw = localStorage.getItem(CONFIG_STORAGE_KEY);
+      return raw ? { ...DEFAULT_CLASSIFIER_CONFIG, ...JSON.parse(raw) } : DEFAULT_CLASSIFIER_CONFIG;
+    } catch {
+      return DEFAULT_CLASSIFIER_CONFIG;
+    }
+  });
+  const configRef = useRef<ClassifierConfig>(classifierConfig);
+
   // Refs for frame-level logic (no stale closures)
   const leftVelRef    = useRef({ x: 0, y: 0 });
   const rightVelRef   = useRef({ x: 0, y: 0 });
-  const leftFrameRef  = useRef<{ type: TherbligType; count: number } | null>(null);
-  const rightFrameRef = useRef<{ type: TherbligType; count: number } | null>(null);
+  const leftFrameRef  = useRef<{ type: TherbligType; count: number; firstSeen: number } | null>(null);
+  const rightFrameRef = useRef<{ type: TherbligType; count: number; firstSeen: number } | null>(null);
   const lastLeftRef   = useRef<{ type: TherbligType; startTime: number } | null>(null);
   const lastRightRef  = useRef<{ type: TherbligType; startTime: number } | null>(null);
 
@@ -65,6 +78,17 @@ const VisionAIDashboard: React.FC = () => {
     const id = setInterval(() => setSessionSeconds(s => s + 1), 1000);
     return () => clearInterval(id);
   }, [isActive]);
+
+  // Update classifier config + keep the ref in sync so the stable handleResults reads it live
+  const handleConfigChange = useCallback((c: ClassifierConfig) => {
+    configRef.current = c;
+    setClassifierConfig(c);
+    try {
+      localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(c));
+    } catch {
+      /* almacenamiento no disponible */
+    }
+  }, []);
 
   const handleStart = () => {
     const now = Date.now();
@@ -104,7 +128,7 @@ const VisionAIDashboard: React.FC = () => {
       other: typeof lh,
       velRef:   React.MutableRefObject<{ x: number; y: number }>,
       smoothRef:React.MutableRefObject<number>,
-      frameRef: React.MutableRefObject<{ type: TherbligType; count: number } | null>,
+      frameRef: React.MutableRefObject<{ type: TherbligType; count: number; firstSeen: number } | null>,
       lastRef:  React.MutableRefObject<{ type: TherbligType; startTime: number } | null>,
       side: 'left' | 'right',
       setter:    (t: TherbligType | null) => void,
@@ -127,15 +151,21 @@ const VisionAIDashboard: React.FC = () => {
       smoothRef.current = ema(smoothRef.current, rawVel, 0.3); // EMA smoothing
       velRef.current = { x: w.x, y: w.y };
 
-      const candidate = classifyTherblig(hand as any, other as any, smoothRef.current);
+      const candidate = classifyTherblig(hand as any, other as any, smoothRef.current, configRef.current);
 
       if (!frameRef.current || frameRef.current.type !== candidate) {
-        frameRef.current = { type: candidate, count: 1 };
+        frameRef.current = { type: candidate, count: 1, firstSeen: now };
       } else {
         frameRef.current.count++;
       }
 
-      if (frameRef.current.count >= DEBOUNCE_FRAMES) {
+      // Decisión deliberada: el therblig candidato debe sostenerse tanto en
+      // nº de frames como en tiempo real (decisionDelayMs) antes de confirmarse.
+      const heldMs = now - frameRef.current.firstSeen;
+      if (
+        frameRef.current.count >= configRef.current.debounceFrames &&
+        heldMs >= (configRef.current.decisionDelayMs ?? 0)
+      ) {
         const stable = frameRef.current.type;
         if (!lastRef.current || lastRef.current.type !== stable) {
           if (lastRef.current) {
@@ -154,7 +184,7 @@ const VisionAIDashboard: React.FC = () => {
 
     // ── Face/emotion ──
     if (face) {
-      const { emotion, head, eyes } = analyzeFace(face as any);
+      const { emotion, head, eyes } = analyzeFace(face as any, configRef.current.drowsyEAR);
       setCurrentEmotion(emotion);
       setCurrentHead(head);
       setCurrentEyes(eyes);
@@ -165,7 +195,7 @@ const VisionAIDashboard: React.FC = () => {
 
     // ── Posture ──
     if (pose) {
-      const ps = calculateRULA(pose as any);
+      const ps = calculateRULA(pose as any, configRef.current.rulaStrictness);
       setCurrentPosture(ps);
       currentPostureRef.current = ps;
     }
@@ -281,6 +311,7 @@ const VisionAIDashboard: React.FC = () => {
         <div className="space-y-4">
           <EmotionEngine current={currentEmotion} history={emotionHistory} />
           <PostureAnalyzer posture={currentPosture} head={currentHead} eyes={currentEyes} />
+          <CalibrationPanel config={classifierConfig} onChange={handleConfigChange} />
           <VirtualObjectSim selected={virtualObject} onChange={setVirtualObject} hasHand={hasHand} />
         </div>
       </div>

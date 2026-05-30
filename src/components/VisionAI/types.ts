@@ -74,11 +74,41 @@ export interface VisionSession {
   therbligs: TherbligEvent[];
 }
 
-export type VirtualObjectType = 'none' | 'caja' | 'herramienta' | 'componente' | 'pantalla' | 'boton';
+export type VirtualObjectType =
+  | 'none' | 'caja' | 'herramienta' | 'martillo' | 'destornillador'
+  | 'tornillo' | 'componente' | 'pcb' | 'engranaje' | 'palanca'
+  | 'pantalla' | 'boton';
 
 export interface ExpertTemplate {
   name: string;
   recordedAt: number;
-  therbligs: { type: TherbligType; duration: number }[];
+  therbligs: { type: TherbligType; duration: number; tolerance?: number }[];
   avgEfficiency: number;
+  samples?: number;
+  consistency?: number;
 }
+
+/** Adjustable thresholds for the Vision AI classifiers. */
+export interface ClassifierConfig {
+  gripThreshold: number;   // avgCurl above → mano agarrando
+  openThreshold: number;   // avgCurl below → mano abierta
+  motionThreshold: number; // velocity above → en movimiento
+  fastThreshold: number;   // velocity above → movimiento rápido
+  debounceFrames: number;  // frames estables antes de confirmar un therblig
+  decisionDelayMs: number; // tiempo mínimo (ms) que un therblig debe sostenerse antes de confirmarse
+  criticality: number;     // rigor del análisis de therbligs (>1 = más crítico, detecta más desperdicio)
+  rulaStrictness: number;  // multiplicador de rigor RULA (1 = estándar)
+  drowsyEAR: number;       // EAR bajo este umbral → somnolencia/fatiga
+}
+
+export const DEFAULT_CLASSIFIER_CONFIG: ClassifierConfig = {
+  gripThreshold: 0.52,
+  openThreshold: 0.28,
+  motionThreshold: 0.007,
+  fastThreshold: 0.02,
+  debounceFrames: 10,
+  decisionDelayMs: 350,
+  criticality: 1.25,
+  rulaStrictness: 1.1,
+  drowsyEAR: 0.21,
+};

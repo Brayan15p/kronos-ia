@@ -1,4 +1,4 @@
-import { Landmark, TherbligType, EmotionState, EmotionLevel, PostureScore, HeadPose, EyeState } from './types';
+import { Landmark, TherbligType, EmotionState, EmotionLevel, PostureScore, HeadPose, EyeState, ClassifierConfig, DEFAULT_CLASSIFIER_CONFIG } from './types';
 
 export function dist2d(a: Landmark, b: Landmark): number {
   return Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2);
@@ -37,7 +37,8 @@ export function ema(prev: number, next: number, alpha = 0.25): number {
 export function classifyTherblig(
   hand: Landmark[],
   otherHand: Landmark[] | null,
-  velocity: number
+  velocity: number,
+  config: ClassifierConfig = DEFAULT_CLASSIFIER_CONFIG
 ): TherbligType {
   const thumb  = fingerCurl(hand, 1, 4);
   const index  = fingerCurl(hand, 5, 8);
@@ -46,29 +47,64 @@ export function classifyTherblig(
   const pinky  = fingerCurl(hand, 17, 20);
   const avgCurl = (thumb + index + middle + ring + pinky) / 5;
 
-  const isGripping = avgCurl > 0.52;
-  const isOpen     = avgCurl < 0.28;
-  const isMoving   = velocity > 0.007;
-  const isFast     = velocity > 0.02;
-  const isStill    = velocity < 0.002;
-  const isErratic  = velocity > 0.012 && velocity < 0.022;
-  const handsNear  = otherHand ? dist2d(hand[0], otherHand[0]) < 0.18 : false;
+  // criticality > 1 → el modelo es más exigente: detecta antes las demoras/quietud
+  // y es más estricto al considerar un movimiento "errático" (búsqueda).
+  const crit = Math.max(0.5, config.criticality ?? 1);
 
-  if (handsNear && isMoving) return 'A';
-  if (isGripping && isFast)  return 'TL';
-  if (isOpen && isFast)      return 'TE';
-  if (isGripping && isStill) return isErratic ? 'H' : 'G';
-  if (isOpen && isStill && velocity < 0.003) return 'RL';
-  if (isErratic && !isGripping) return 'Sh';
-  if (avgCurl > 0.3 && avgCurl < 0.55 && !isMoving) return 'Se';
-  if (isStill && !isGripping) return 'AD';
-  if (isMoving && !isGripping) return 'P';
+  const isGripping = avgCurl > config.gripThreshold;
+  const isOpen     = avgCurl < config.openThreshold;
+  const isMoving   = velocity > config.motionThreshold;
+  const isFast     = velocity > config.fastThreshold;
+  const isStill    = velocity < 0.002 * crit;                       // más crítico ⇒ marca quietud antes
+  const isErratic  = velocity > (0.011 / crit) && velocity < 0.024; // más crítico ⇒ búsqueda más sensible
+
+  // Contexto entre manos
+  const handDist  = otherHand ? dist2d(hand[0], otherHand[0]) : 1;
+  const handsNear = handDist < 0.18;
+  const handsFar  = otherHand ? handDist > 0.45 : false;
+
+  // Posición vertical de la muñeca (0 = arriba del encuadre, 1 = abajo)
+  const handY    = hand[0]?.y ?? 0.5;
+  const handHigh = handY < 0.38;   // mano elevada → inspección / planeación
+  const handLow  = handY > 0.82;   // mano caída    → descanso
+
+  // Orden: de la combinación más específica a la más genérica.
+  if (handsNear && isMoving && isGripping)   return 'A';   // Assemble: ambas manos juntas trabajando
+  if (handsFar  && isFast   && isGripping)   return 'DA';  // Disassemble: separar piezas con fuerza
+  if (isGripping && isFast)                  return 'TL';  // Transport Loaded
+  if (isOpen     && isFast)                  return 'TE';  // Transport Empty
+  if (isGripping && isErratic)               return 'U';   // Use: agarre con oscilación (usar herramienta)
+  if (isGripping && isStill)                 return 'H';   // Hold: retención estática (ineficiente)
+  if (isGripping)                            return 'G';   // Grasp
+  if (isOpen && isStill && handLow)          return 'R';   // Rest: mano caída, en reposo
+  if (isOpen && isStill && handHigh)         return 'Pn';  // Plan: mano arriba, deliberando
+  if (isOpen && isStill && velocity < 0.003) return 'RL';  // Release Load
+  if (isErratic && isOpen)                   return 'Sh';  // Search: búsqueda sin dirección
+  if (avgCurl > 0.30 && avgCurl < 0.55 && handHigh && !isMoving) return 'I';  // Inspect: examinar elevando
+  if (avgCurl > 0.30 && avgCurl < 0.55 && !isMoving)             return 'Se'; // Select: selección vacilante
+  if (isStill && !isGripping)                return 'AD';  // Avoidable Delay: quieto sin agarrar
+  if (isMoving && !isGripping)               return 'P';   // Position
   return 'U';
 }
 
-export function calculateRULA(pose: Landmark[]): PostureScore {
+/**
+ * Estándares de referencia (ms) por therblig — orden de magnitud basado en
+ * sistemas de tiempos predeterminados (MTM/Therblig). Sirven para que el modelo
+ * sea "más crítico": si un therblig eficiente dura mucho más que su referencia,
+ * o si aparecen therbligs ineficientes, se penaliza la valoración del puesto.
+ */
+export const THERBLIG_STANDARD_MS: Record<string, number> = {
+  G: 700, TL: 900, RL: 500, A: 1500, U: 1200, P: 800, TE: 700, DA: 1200,
+  Sh: 300, Se: 400, H: 200, AD: 0, Pn: 500, UD: 0, R: 0, I: 1000,
+};
+
+export function calculateRULA(pose: Landmark[], strictness = 1): PostureScore {
   const empty: PostureScore = { rula: 1, neckAngle: 0, trunkAngle: 0, upperArmAngle: 0, forearmAngle: 0, wristAngle: 0, risk: 'low' };
   if (!pose || pose.length < 25) return empty;
+
+  // strictness > 1 → umbrales más bajos → penaliza posturas con mayor facilidad.
+  const s = Math.max(0.1, strictness);
+  const t = (threshold: number) => threshold / s;
 
   const nose = pose[0];
   const ls = pose[11]; const rs = pose[12];
@@ -89,10 +125,10 @@ export function calculateRULA(pose: Landmark[]): PostureScore {
   const wristAngle    = Math.abs(angleDeg(le, lw, wristRef) - 180);
 
   let score = 1;
-  if (neckAngle > 20)    score += 2; else if (neckAngle > 10) score += 1;
-  if (trunkAngle > 60)   score += 3; else if (trunkAngle > 20) score += 2; else if (trunkAngle > 5) score += 1;
-  if (upperArmAngle > 90) score += 2; else if (upperArmAngle > 45) score += 1;
-  if (wristAngle > 15)   score += 2; else if (wristAngle > 5) score += 1;
+  if (neckAngle > t(20))    score += 2; else if (neckAngle > t(10)) score += 1;
+  if (trunkAngle > t(60))   score += 3; else if (trunkAngle > t(20)) score += 2; else if (trunkAngle > t(5)) score += 1;
+  if (upperArmAngle > t(90)) score += 2; else if (upperArmAngle > t(45)) score += 1;
+  if (wristAngle > t(15))   score += 2; else if (wristAngle > t(5)) score += 1;
 
   const rula  = Math.min(7, Math.max(1, score));
   const risk: PostureScore['risk'] = rula <= 2 ? 'low' : rula <= 4 ? 'medium' : rula <= 6 ? 'high' : 'critical';
@@ -100,7 +136,7 @@ export function calculateRULA(pose: Landmark[]): PostureScore {
   return { rula, neckAngle: Math.round(neckAngle), trunkAngle: Math.round(trunkAngle), upperArmAngle: Math.round(upperArmAngle), forearmAngle: Math.round(forearmAngle), wristAngle: Math.round(wristAngle), risk };
 }
 
-export function analyzeFace(face: Landmark[]): { emotion: EmotionState; head: HeadPose; eyes: EyeState } {
+export function analyzeFace(face: Landmark[], drowsyEAR = 0.21): { emotion: EmotionState; head: HeadPose; eyes: EyeState } {
   const defEmotion: EmotionState = { level: 'neutral', score: 50, ear: 0.3, smile: 0, stress: 0, timestamp: Date.now() };
   const defHead: HeadPose  = { yaw: 0, pitch: 0, roll: 0 };
   const defEyes: EyeState  = { leftEAR: 0.3, rightEAR: 0.3, avgEAR: 0.3, isClosed: false, isDrowsy: false };
@@ -134,10 +170,13 @@ export function analyzeFace(face: Landmark[]): { emotion: EmotionState; head: He
   const pitch = noseTip && noseTop ? (noseTip.y - noseTop.y - 0.08) * 85 : 0;
   const roll  = lec && rec ? (rec.y - lec.y) * 100 : 0;
 
+  // closedEAR escala con drowsyEAR (≈2/3 del umbral de somnolencia, como 0.14/0.21).
+  const closedEAR = drowsyEAR * (0.14 / 0.21);
+
   let level: EmotionLevel;
   let score: number;
-  if (avgEAR < 0.14)                           { level = 'fatigued';  score = 10; }
-  else if (avgEAR < 0.21)                      { level = 'fatigued';  score = 28; }
+  if (avgEAR < closedEAR)                       { level = 'fatigued';  score = 10; }
+  else if (avgEAR < drowsyEAR)                  { level = 'fatigued';  score = 28; }
   else if (browTension > 0.72 && smile < 0)    { level = 'stressed';  score = 32; }
   else if (smile > 0.35 && avgEAR > 0.24)      { level = 'motivated'; score = 92; }
   else if (smile > 0.12)                       { level = 'focused';   score = 68; }
@@ -147,7 +186,7 @@ export function analyzeFace(face: Landmark[]): { emotion: EmotionState; head: He
   return {
     emotion: { level, score, ear: avgEAR, smile, stress: browTension, timestamp: Date.now() },
     head:    { yaw: Math.round(yaw), pitch: Math.round(pitch), roll: Math.round(roll) },
-    eyes:    { leftEAR: personLeftEAR, rightEAR: personRightEAR, avgEAR, isClosed: avgEAR < 0.14, isDrowsy: avgEAR < 0.21 },
+    eyes:    { leftEAR: personLeftEAR, rightEAR: personRightEAR, avgEAR, isClosed: avgEAR < closedEAR, isDrowsy: avgEAR < drowsyEAR },
   };
 }
 

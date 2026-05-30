@@ -1,4 +1,21 @@
-import React, { createContext, useContext, useState, useCallback } from "react";
+import React, { createContext, useContext, useState, useCallback, useEffect } from "react";
+
+const SST_STORAGE_KEY = "kronos_sst_v1";
+
+/** Carga las mediciones SST guardadas, reviviendo las fechas de las lecturas. */
+function loadSST(): { readings?: any[]; workstations?: any[]; zones?: any[] } | null {
+  try {
+    const raw = localStorage.getItem(SST_STORAGE_KEY);
+    if (!raw) return null;
+    const d = JSON.parse(raw) as any;
+    if (Array.isArray(d.readings)) {
+      d.readings = d.readings.map((r: any) => ({ ...r, timestamp: new Date(r.timestamp) }));
+    }
+    return d;
+  } catch {
+    return null;
+  }
+}
 
 export type MeasureType = "lux" | "db" | "both";
 
@@ -106,9 +123,19 @@ const DEFAULT_ZONES: ZoneConfig[] = [
 ];
 
 export const SSTProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [readings, setReadings] = useState<EnvironmentalReading[]>([]);
-  const [workstations, setWorkstations] = useState<WorkstationConfig[]>([]);
-  const [zones, setZones] = useState<ZoneConfig[]>(DEFAULT_ZONES);
+  const [persisted] = useState(loadSST);
+  const [readings, setReadings] = useState<EnvironmentalReading[]>(persisted?.readings ?? []);
+  const [workstations, setWorkstations] = useState<WorkstationConfig[]>(persisted?.workstations ?? []);
+  const [zones, setZones] = useState<ZoneConfig[]>(persisted?.zones ?? DEFAULT_ZONES);
+
+  // Guardado automático de las mediciones SST en este navegador.
+  useEffect(() => {
+    try {
+      localStorage.setItem(SST_STORAGE_KEY, JSON.stringify({ readings, workstations, zones }));
+    } catch {
+      /* almacenamiento no disponible */
+    }
+  }, [readings, workstations, zones]);
 
   const addReading = useCallback((r: EnvironmentalReading) => {
     setReadings((prev) => [...prev, r]);

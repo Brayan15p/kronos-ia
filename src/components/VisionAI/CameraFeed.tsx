@@ -325,16 +325,16 @@ const CameraFeed: React.FC<Props> = ({
               objGrabbedRef.current = false;
             }
             const GRAVITY = 0.38; const BOUNCE = 0.60; const FRICTION = 0.987;
-            objVelRef.current.vy += GRAVITY;
-            objVelRef.current.vx *= FRICTION;
-            objPosRef.current.x  += objVelRef.current.vx;
-            objPosRef.current.y  += objVelRef.current.vy;
+            objVelRef.current.y += GRAVITY;
+            objVelRef.current.x *= FRICTION;
+            objPosRef.current.x  += objVelRef.current.x;
+            objPosRef.current.y  += objVelRef.current.y;
 
             const margin = 52;
-            if (objPosRef.current.x < margin)     { objPosRef.current.x = margin;     objVelRef.current.vx =  Math.abs(objVelRef.current.vx) * BOUNCE; }
-            if (objPosRef.current.x > w - margin)  { objPosRef.current.x = w - margin;  objVelRef.current.vx = -Math.abs(objVelRef.current.vx) * BOUNCE; }
-            if (objPosRef.current.y < margin)      { objPosRef.current.y = margin;      objVelRef.current.vy =  Math.abs(objVelRef.current.vy) * BOUNCE; }
-            if (objPosRef.current.y > h - margin)  { objPosRef.current.y = h - margin;  objVelRef.current.vy = -Math.abs(objVelRef.current.vy) * BOUNCE; if (Math.abs(objVelRef.current.vy) < 0.5) objVelRef.current.vy = 0; }
+            if (objPosRef.current.x < margin)     { objPosRef.current.x = margin;     objVelRef.current.x =  Math.abs(objVelRef.current.x) * BOUNCE; }
+            if (objPosRef.current.x > w - margin)  { objPosRef.current.x = w - margin;  objVelRef.current.x = -Math.abs(objVelRef.current.x) * BOUNCE; }
+            if (objPosRef.current.y < margin)      { objPosRef.current.y = margin;      objVelRef.current.y =  Math.abs(objVelRef.current.y) * BOUNCE; }
+            if (objPosRef.current.y > h - margin)  { objPosRef.current.y = h - margin;  objVelRef.current.y = -Math.abs(objVelRef.current.y) * BOUNCE; if (Math.abs(objVelRef.current.y) < 0.5) objVelRef.current.y = 0; }
           }
         }
 

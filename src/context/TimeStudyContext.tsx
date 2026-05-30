@@ -1,4 +1,42 @@
-import React, { createContext, useContext, useState, useCallback } from "react";
+import React, { createContext, useContext, useState, useCallback, useEffect } from "react";
+
+const STORAGE_KEY = "kronos_timestudy_v1";
+
+interface PersistedState {
+  steps: StepConfig[];
+  operators: OperatorConfig[];
+  cycles: CycleRecord[];
+  defects: DefectRecord[];
+  qualityChecks: QualityCheck[];
+  costConfig: CostConfig;
+}
+
+/** Carga el estudio guardado, reviviendo los campos de fecha a objetos Date. */
+function loadPersisted(): Partial<PersistedState> | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    const d = JSON.parse(raw) as any;
+    if (Array.isArray(d.cycles)) {
+      d.cycles = d.cycles.map((c: any) => ({
+        ...c,
+        timestamp: new Date(c.timestamp),
+        steps: Array.isArray(c.steps)
+          ? c.steps.map((s: any) => ({ ...s, timestamp: new Date(s.timestamp) }))
+          : [],
+      }));
+    }
+    if (Array.isArray(d.defects)) {
+      d.defects = d.defects.map((x: any) => ({ ...x, timestamp: new Date(x.timestamp) }));
+    }
+    if (Array.isArray(d.qualityChecks)) {
+      d.qualityChecks = d.qualityChecks.map((x: any) => ({ ...x, timestamp: new Date(x.timestamp) }));
+    }
+    return d as Partial<PersistedState>;
+  } catch {
+    return null;
+  }
+}
 
 export interface StepConfig {
   number: number;
@@ -105,19 +143,38 @@ export const useTimeStudy = () => {
 };
 
 export const TimeStudyProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [steps, setSteps] = useState<StepConfig[]>(DEFAULT_STEPS);
-  const [operators, setOperators] = useState<OperatorConfig[]>([
-    { id: 1, name: "Operario 1", hourlyCost: 15000 },
-    { id: 2, name: "Operario 2", hourlyCost: 15000 },
-  ]);
-  const [cycles, setCycles] = useState<CycleRecord[]>([]);
-  const [defects, setDefects] = useState<DefectRecord[]>([]);
-  const [qualityChecks, setQualityChecks] = useState<QualityCheck[]>([]);
-  const [costConfig, setCostConfig] = useState<CostConfig>({
-    productValue: 5000,
-    targetCycleTime: 120,
-    monthlyProductionTarget: 1000,
-  });
+  // Estudio guardado en este navegador (se restaura al recargar la página)
+  const [persisted] = useState(loadPersisted);
+
+  const [steps, setSteps] = useState<StepConfig[]>(persisted?.steps ?? DEFAULT_STEPS);
+  const [operators, setOperators] = useState<OperatorConfig[]>(
+    persisted?.operators ?? [
+      { id: 1, name: "Operario 1", hourlyCost: 15000 },
+      { id: 2, name: "Operario 2", hourlyCost: 15000 },
+    ]
+  );
+  const [cycles, setCycles] = useState<CycleRecord[]>(persisted?.cycles ?? []);
+  const [defects, setDefects] = useState<DefectRecord[]>(persisted?.defects ?? []);
+  const [qualityChecks, setQualityChecks] = useState<QualityCheck[]>(persisted?.qualityChecks ?? []);
+  const [costConfig, setCostConfig] = useState<CostConfig>(
+    persisted?.costConfig ?? {
+      productValue: 5000,
+      targetCycleTime: 120,
+      monthlyProductionTarget: 1000,
+    }
+  );
+
+  // Guardado automático: cada cambio del estudio se persiste en localStorage.
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({ steps, operators, cycles, defects, qualityChecks, costConfig })
+      );
+    } catch {
+      /* almacenamiento lleno o no disponible */
+    }
+  }, [steps, operators, cycles, defects, qualityChecks, costConfig]);
 
   const addStep = useCallback((name: string, emoji: string) => {
     setSteps((prev) => [...prev, { number: prev.length + 1, name, emoji }]);

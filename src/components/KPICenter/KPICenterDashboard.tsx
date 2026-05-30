@@ -25,11 +25,12 @@ const KPICenterDashboard: React.FC = () => {
   const kpis = useMemo(() => {
     const totalCycles = cycles.length;
     const avgCycleTime = totalCycles > 0
-      ? cycles.reduce((s, c) => s + c.steps.reduce((ss, st) => ss + st.time, 0), 0) / totalCycles
+      ? cycles.reduce((s, c) => s + (c.duration || c.steps.reduce((ss, st) => ss + st.duration, 0)), 0) / totalCycles
       : 0;
-    const stdTime = steps.reduce((s, st) => s + st.standardTime, 0);
+    // Tiempo estándar = objetivo de ciclo configurado (no existe estándar por paso en el modelo)
+    const stdTime = costConfig.targetCycleTime > 0 ? costConfig.targetCycleTime : avgCycleTime;
     const pct = stdTime > 0 && avgCycleTime > 0 ? Math.round((stdTime / avgCycleTime) * 100) : 0;
-    const defectCycles = cycles.filter(c => c.hasDefect).length;
+    const defectCycles = cycles.filter(c => !c.qualityPass).length;
     const dpm = totalCycles > 0 ? Math.round((defectCycles / totalCycles) * 1_000_000) : 0;
     const qualityPct = totalCycles > 0 ? Math.round(((totalCycles - defectCycles) / totalCycles) * 100) : 99;
 
@@ -63,7 +64,7 @@ const KPICenterDashboard: React.FC = () => {
 
   const operatorKPIs = useMemo(() => operators.map(op => {
     const opCycles = cycles.filter(c => c.operatorId === op.id);
-    const defects = opCycles.filter(c => c.hasDefect).length;
+    const defects = opCycles.filter(c => !c.qualityPass).length;
     return {
       name: op.name.length > 10 ? op.name.slice(0, 10) + '…' : op.name,
       ciclos: opCycles.length,
@@ -251,7 +252,7 @@ const KPICenterDashboard: React.FC = () => {
           efficiency={67}
           daysWithoutAccident={daysWithoutAccident}
           complianceRate={kpis.compliancePct}
-          readings={readings.map(r => ({ zone: r.zone, lux: r.lux, db: r.db, operatorName: r.operatorName, timestamp: r.timestamp }))}
+          readings={readings.map(r => ({ zone: r.zone, lux: r.lux, db: r.db, operatorName: r.operatorName, timestamp: new Date(r.timestamp).getTime() }))}
         />
         <div className="glass-card p-4 space-y-3">
           <div className="flex items-center gap-2">
