@@ -1078,73 +1078,135 @@ const MonteCarloSimulator: React.FC = () => {
             </div>
 
             {/* Tiempo objetivo */}
-            <div>
-              <label className="text-[10px] text-muted-foreground uppercase tracking-wider flex justify-between">
-                <span>Tiempo objetivo</span>
-                <span className="text-primary font-mono">{target.toFixed(0)}s</span>
-              </label>
-              <input
-                type="range"
-                min={Math.max(1, Math.round(base.mean * 0.4))}
-                max={Math.round(Math.max(base.mean * 2, base.mean + 4 * base.std + 1))}
-                step={1}
-                value={target}
-                onChange={(e) => setTarget(Number(e.target.value))}
-                className="w-full mt-2 cursor-pointer"
-                style={{ accentColor: "hsl(192,90%,50%)" }}
-              />
-            </div>
+            {(() => {
+              const slack = base.mean > 0 ? ((target - base.mean) / base.mean) * 100 : 0;
+              const mins = Math.floor(target / 60);
+              const secs = Math.round(target % 60);
+              const timeStr = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+              const slackColor = slack >= 20 ? "hsl(152,60%,50%)" : slack >= 5 ? "hsl(38,92%,55%)" : "hsl(0,72%,60%)";
+              const slackMsg = slack >= 20
+                ? `Holgura amplia (+${slack.toFixed(0)}% sobre la media) — el proceso tiene margen cómodo.`
+                : slack >= 5
+                ? `Holgura ajustada (+${slack.toFixed(0)}%) — cualquier ciclo lento lo supera.`
+                : slack >= 0
+                ? `Objetivo muy justo (+${slack.toFixed(0)}%) — la mayoría de ciclos lo rozarán.`
+                : `⚠ Objetivo menor que la media actual (${slack.toFixed(0)}%) — irrealizable sin mejora.`;
+              return (
+                <div>
+                  <label className="text-[10px] text-muted-foreground uppercase tracking-wider flex justify-between">
+                    <span>Tiempo objetivo (LSC del proceso)</span>
+                    <span className="text-primary font-mono font-bold">{timeStr}</span>
+                  </label>
+                  <input
+                    type="range"
+                    min={Math.max(1, Math.round(base.mean * 0.4))}
+                    max={Math.round(Math.max(base.mean * 2, base.mean + 4 * base.std + 1))}
+                    step={1}
+                    value={target}
+                    onChange={(e) => setTarget(Number(e.target.value))}
+                    className="w-full mt-2 cursor-pointer"
+                    style={{ accentColor: "hsl(192,90%,50%)" }}
+                  />
+                  <div className="mt-1.5 rounded-md px-2 py-1.5 text-[10px] leading-snug border"
+                    style={{ borderColor: slackColor + "44", background: slackColor + "0d", color: slackColor }}>
+                    {slackMsg}
+                  </div>
+                  <p className="text-[10px] text-muted-foreground mt-1 leading-snug">
+                    <b>¿Qué es?</b> El tiempo máximo permitido por ciclo (Límite Superior de Control). Si el ciclo
+                    lo supera, es un defecto. Contra este valor se calculan Cpk, DPMO, sigma y la prueba de hipótesis.
+                    Subirlo = más tolerante; bajarlo = más exigente.
+                  </p>
+                </div>
+              );
+            })()}
 
             {/* Reducir variabilidad */}
-            <div>
-              <label className="text-[10px] text-muted-foreground uppercase tracking-wider flex justify-between">
-                <span>Reducir variabilidad (Six Sigma)</span>
-                <span className="text-success font-mono">−{varReduction}%</span>
-              </label>
-              <input
-                type="range"
-                min={0}
-                max={80}
-                step={1}
-                value={varReduction}
-                onChange={(e) => setVarReduction(Number(e.target.value))}
-                className="w-full mt-2 cursor-pointer"
-                style={{ accentColor: "hsl(152,60%,50%)" }}
-              />
-              <p className="text-[10px] text-muted-foreground mt-1 leading-snug">
-                σ efectiva = σ · (1 − x/100)
-              </p>
-            </div>
+            {(() => {
+              const effSigma = base.std * (1 - varReduction / 100);
+              const cv = base.mean > 0 ? (effSigma / base.mean) * 100 : 0;
+              const sigmaEquiv = varReduction >= 75 ? "6σ" : varReduction >= 58 ? "5σ" : varReduction >= 40 ? "4σ" : varReduction >= 20 ? "3σ" : varReduction > 0 ? "2–3σ" : "línea base";
+              const action = varReduction === 0
+                ? "Sin cambio — simulando el proceso tal como está hoy."
+                : varReduction <= 20
+                ? `Mejora inicial (DMAIC Define/Measure). σ: ${base.std.toFixed(1)}s → ${effSigma.toFixed(1)}s. Equivale a estandarizar el puesto y eliminar las causas más obvias.`
+                : varReduction <= 40
+                ? `Mejora sólida (DMAIC Analyze/Improve). σ: ${base.std.toFixed(1)}s → ${effSigma.toFixed(1)}s. Requiere rediseño del método, poka-yoke o jidoka.`
+                : varReduction <= 60
+                ? `Mejora avanzada (≈ ${sigmaEquiv}). σ: ${base.std.toFixed(1)}s → ${effSigma.toFixed(1)}s. Requiere automatización parcial o cambio de proceso.`
+                : `Mejora de clase mundial (≈ ${sigmaEquiv}). σ: ${base.std.toFixed(1)}s → ${effSigma.toFixed(1)}s. CV = ${cv.toFixed(1)}%. Solo alcanzable con procesos altamente controlados.`;
+              const col = varReduction === 0 ? "hsl(215,15%,50%)" : varReduction <= 30 ? "hsl(38,92%,55%)" : "hsl(152,60%,50%)";
+              return (
+                <div>
+                  <label className="text-[10px] text-muted-foreground uppercase tracking-wider flex justify-between">
+                    <span>Reducir variabilidad (Six Sigma)</span>
+                    <span className="font-mono font-bold" style={{ color: col }}>
+                      {varReduction === 0 ? "sin cambio" : `−${varReduction}% σ · ≈ ${sigmaEquiv}`}
+                    </span>
+                  </label>
+                  <input
+                    type="range" min={0} max={80} step={1} value={varReduction}
+                    onChange={(e) => setVarReduction(Number(e.target.value))}
+                    className="w-full mt-2 cursor-pointer"
+                    style={{ accentColor: "hsl(152,60%,50%)" }}
+                  />
+                  <div className="mt-1.5 rounded-md px-2 py-1.5 text-[10px] leading-snug border"
+                    style={{ borderColor: col + "44", background: col + "0d", color: col }}>
+                    {action}
+                  </div>
+                  <p className="text-[10px] text-muted-foreground mt-1 leading-snug">
+                    <b>¿Qué hace?</b> Simula que implementas una mejora Six Sigma que reduce la dispersión del proceso.
+                    La fórmula es σ_efectiva = σ · (1 − x/100). <b>No cambia la media</b> — solo estrecha la campana.
+                    Cuanto más alta la barra, más consistente sería el operario: menos ciclos muy lentos.
+                  </p>
+                </div>
+              );
+            })()}
 
             {/* Ajuste de media */}
-            <div>
-              <label className="text-[10px] text-muted-foreground uppercase tracking-wider flex justify-between">
-                <span>Ajuste de la media</span>
-                <span
-                  className="font-mono"
-                  style={{
-                    color:
-                      meanShift <= 0 ? "hsl(152,60%,50%)" : "hsl(0,72%,60%)",
-                  }}
-                >
-                  {meanShift > 0 ? "+" : ""}
-                  {meanShift}%
-                </span>
-              </label>
-              <input
-                type="range"
-                min={-30}
-                max={30}
-                step={1}
-                value={meanShift}
-                onChange={(e) => setMeanShift(Number(e.target.value))}
-                className="w-full mt-2 cursor-pointer"
-                style={{ accentColor: "hsl(265,80%,62%)" }}
-              />
-              <p className="text-[10px] text-muted-foreground mt-1 leading-snug">
-                μ efectiva = μ · (1 + x/100)
-              </p>
-            </div>
+            {(() => {
+              const effMeanVal = base.mean * (1 + meanShift / 100);
+              const delta = effMeanVal - base.mean;
+              const mins = Math.floor(effMeanVal / 60);
+              const secs = (effMeanVal % 60).toFixed(1);
+              const newTime = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+              const col = meanShift < 0 ? "hsl(152,60%,50%)" : meanShift > 0 ? "hsl(0,72%,60%)" : "hsl(215,15%,50%)";
+              const meaning = meanShift === 0
+                ? "Sin cambio — media real del proceso."
+                : meanShift < 0
+                ? `El operario aceleraría ${Math.abs(delta).toFixed(1)}s por ciclo en promedio. Causas: método mejorado, herramienta más ergonómica, entrenamiento, balanceo de línea.`
+                : `El operario tardaría ${delta.toFixed(1)}s más por ciclo en promedio. Causas: fatiga acumulada, material difícil, pasos adicionales, retrabajos.`;
+              const action = meanShift < -15
+                ? "¿Es alcanzable? Consulta con el operario — una reducción >15% de la media generalmente requiere cambio de método, no solo motivación."
+                : meanShift > 15
+                ? "Escenario de riesgo: úsalo para estimar el impacto de un día de baja productividad o un lote de material defectuoso."
+                : "";
+              return (
+                <div>
+                  <label className="text-[10px] text-muted-foreground uppercase tracking-wider flex justify-between">
+                    <span>Ajuste de la media (balanceo de línea)</span>
+                    <span className="font-mono font-bold" style={{ color: col }}>
+                      {meanShift === 0 ? "sin cambio" : `${meanShift > 0 ? "+" : ""}${meanShift}% → ${newTime}/ciclo`}
+                    </span>
+                  </label>
+                  <input
+                    type="range" min={-30} max={30} step={1} value={meanShift}
+                    onChange={(e) => setMeanShift(Number(e.target.value))}
+                    className="w-full mt-2 cursor-pointer"
+                    style={{ accentColor: "hsl(265,80%,62%)" }}
+                  />
+                  <div className="mt-1.5 rounded-md px-2 py-1.5 text-[10px] leading-snug border"
+                    style={{ borderColor: col + "44", background: col + "0d", color: col }}>
+                    {meaning}
+                    {action && <><br /><span className="opacity-80">{action}</span></>}
+                  </div>
+                  <p className="text-[10px] text-muted-foreground mt-1 leading-snug">
+                    <b>¿Qué hace?</b> Desplaza la campana completa a la izquierda (más rápido) o derecha (más lento).
+                    La fórmula es μ_efectiva = μ · (1 + x/100). Usa valores negativos para simular mejoras de productividad;
+                    positivos para simular días difíciles o condiciones adversas.
+                  </p>
+                </div>
+              );
+            })()}
 
             {/* Resumen base */}
             <div className="rounded-lg p-3 bg-muted/5 border border-border/40">
