@@ -3,7 +3,13 @@
 export const config = { runtime: "edge" };
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
-const MODEL = "meta-llama/llama-3.3-70b-instruct:free";
+// Cadena de modelos gratuitos — si el primero está rate-limited, prueba el siguiente
+const MODELS = [
+  "meta-llama/llama-3.3-70b-instruct:free",
+  "google/gemini-2.0-flash-exp:free",
+  "deepseek/deepseek-r1:free",
+  "mistralai/mistral-7b-instruct:free",
+];
 
 function buildPrompt(data: Record<string, unknown>): string {
   const {
@@ -94,38 +100,54 @@ export default async function handler(req: Request): Promise<Response> {
 
   const prompt = buildPrompt(body);
 
-  const upstream = await fetch(OPENROUTER_URL, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-      "HTTP-Referer": "https://kronos-ia.vercel.app",
-      "X-Title": "KRONOS.AI Industrial Intelligence",
-    },
-    body: JSON.stringify({
-      model: MODEL,
-      messages: [{ role: "user", content: prompt }],
-      stream: true,
-      max_tokens: 450,
-      temperature: 0.35,
-    }),
-  });
+  // Intenta cada modelo en orden — si hay 429 (rate-limit) pasa al siguiente
+  let lastError = "";
+  for (const model of MODELS) {
+    const upstream = await fetch(OPENROUTER_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://kronos-ia.vercel.app",
+        "X-Title": "KRONOS.AI Industrial Intelligence",
+      },
+      body: JSON.stringify({
+        model,
+        messages: [{ role: "user", content: prompt }],
+        stream: true,
+        max_tokens: 450,
+        temperature: 0.35,
+      }),
+    });
 
-  if (!upstream.ok) {
-    const err = await upstream.text();
-    return new Response(JSON.stringify({ error: err }), {
-      status: upstream.status,
-      headers: { "Content-Type": "application/json" },
+    if (upstream.status === 429) {
+      lastError = `${model} rate-limited`;
+      continue; // probar siguiente modelo
+    }
+
+    if (!upstream.ok) {
+      const err = await upstream.text();
+      return new Response(JSON.stringify({ error: err }), {
+        status: upstream.status,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    // Stream SSE directo al cliente con el modelo que respondió
+    return new Response(upstream.body, {
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache, no-store",
+        "Access-Control-Allow-Origin": "*",
+        "X-Model-Used": model,
+        "Transfer-Encoding": "chunked",
+      },
     });
   }
 
-  // Pasar el stream SSE directamente al cliente
-  return new Response(upstream.body, {
-    headers: {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache, no-store",
-      "Access-Control-Allow-Origin": "*",
-      "Transfer-Encoding": "chunked",
-    },
-  });
+  // Todos los modelos fallaron
+  return new Response(
+    JSON.stringify({ error: `Todos los modelos gratuitos están rate-limited. Último error: ${lastError}. Intenta en unos segundos.` }),
+    { status: 503, headers: { "Content-Type": "application/json" } }
+  );
 }
