@@ -761,16 +761,19 @@ const MonteCarloSimulator: React.FC = () => {
 
   // ── IA Advisor — chat multi-turn con streaming ──────────────────────────────
   type AiMsg = { role: "user" | "assistant"; content: string };
-  const [aiOpen, setAiOpen] = useState(false);
   const [aiMessages, setAiMessages] = useState<AiMsg[]>([]);
   const [aiInput, setAiInput] = useState("");
   const [aiStreaming, setAiStreaming] = useState(false);
   const aiAbortRef = useRef<AbortController | null>(null);
   const aiScrollRef = useRef<HTMLDivElement>(null);
   const aiInputRef = useRef<HTMLInputElement>(null);
+  const aiAutoFiredRef = useRef(false);
 
-  // Limpiar chat cuando cambian los resultados
-  useEffect(() => { setAiMessages([]); }, [simResults]);
+  // Limpiar chat cuando llegan nuevos resultados
+  useEffect(() => {
+    setAiMessages([]);
+    aiAutoFiredRef.current = false;
+  }, [simResults]);
 
   const scrollToBottom = useCallback(() => {
     setTimeout(() => aiScrollRef.current?.scrollTo({ top: 9999, behavior: "smooth" }), 50);
@@ -867,6 +870,15 @@ const MonteCarloSimulator: React.FC = () => {
       aiInputRef.current?.focus();
     }
   }, [simContext, aiStreaming, aiMessages, scrollToBottom]);
+
+  // Auto-dispara el primer análisis cuando llegan resultados
+  useEffect(() => {
+    if (simResults && !aiAutoFiredRef.current && !aiStreaming) {
+      aiAutoFiredRef.current = true;
+      sendAiMessage();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [simResults]);
 
   const QUICK_CHIPS = [
     "¿Qué hago esta semana?",
@@ -1737,234 +1749,149 @@ const MonteCarloSimulator: React.FC = () => {
             );
           })()}
 
-          {/* KPIs financieros */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="glass-card p-4 text-center">
-              <Target className="w-5 h-5 text-primary mx-auto mb-2" />
-              <div className="stat-value text-xl text-primary">
-                {(simResults.probMeetTarget * 100).toFixed(1)}%
+          {/* KPIs — en lenguaje de planta */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {[
+              {
+                icon: Target, color: "text-primary", val: `${(simResults.probMeetTarget*100).toFixed(1)}%`,
+                label: "Ciclos que cumplen", sub: "del tiempo el operario termina a tiempo",
+              },
+              {
+                icon: DollarSign, color: "text-warning", val: formatMoney(simResults.expected),
+                label: "Ganancia mensual esperada", sub: "utilidad promedio proyectada",
+              },
+              {
+                icon: TrendingUp, color: "text-success", val: formatMoney(simResults.best),
+                label: "Mejor mes posible", sub: "si todo sale bien (5% mejor escenario)",
+              },
+              {
+                icon: TrendingDown, color: "text-destructive", val: formatMoney(simResults.worst),
+                label: "Peor mes posible", sub: "si el proceso se atrasa (5% peor caso)",
+              },
+              {
+                icon: ShieldAlert, color: "text-destructive", val: formatMoney(simResults.var95),
+                label: "Riesgo máximo mensual", sub: "lo que se podría perder en un mes difícil",
+              },
+              {
+                icon: CalendarDays, color: simResults.annualExpected>=0?"text-success":"text-destructive",
+                val: formatMoney(simResults.annualExpected),
+                label: "Proyección anual", sub: "ganancia total estimada en 12 meses",
+              },
+              {
+                icon: Zap, color: "text-warning",
+                val: simResults.dpmo.toLocaleString(),
+                label: "Ciclos defectuosos", sub: "de cada millón de ciclos superan el límite",
+              },
+              {
+                icon: Sigma, color: "text-accent",
+                val: `${simResults.sigmaSix.toFixed(1)}σ`,
+                label: "Nivel de calidad", sub: "6σ = perfecto · 3σ = promedio industrial",
+              },
+            ].map(({ icon: Icon, color, val, label, sub }) => (
+              <div key={label} className="glass-card p-3 text-center">
+                <Icon className={`w-4 h-4 ${color} mx-auto mb-1.5`} />
+                <div className={`font-display font-bold text-lg ${color}`}>{val}</div>
+                <div className="text-[11px] font-medium text-foreground">{label}</div>
+                <div className="text-[10px] text-muted-foreground leading-snug mt-0.5">{sub}</div>
               </div>
-              <div className="stat-label">Prob. cumplir objetivo</div>
-            </div>
-            <div className="glass-card p-4 text-center">
-              <DollarSign className="w-5 h-5 text-warning mx-auto mb-2" />
-              <div className="stat-value text-xl text-warning">
-                {formatMoney(simResults.expected)}
-              </div>
-              <div className="stat-label">Utilidad mensual esperada</div>
-            </div>
-            <div className="glass-card p-4 text-center">
-              <TrendingUp className="w-5 h-5 text-success mx-auto mb-2" />
-              <div className="stat-value text-xl text-success">
-                {formatMoney(simResults.best)}
-              </div>
-              <div className="stat-label">Mejor caso (P5)</div>
-            </div>
-            <div className="glass-card p-4 text-center">
-              <TrendingDown className="w-5 h-5 text-destructive mx-auto mb-2" />
-              <div className="stat-value text-xl text-destructive">
-                {formatMoney(simResults.worst)}
-              </div>
-              <div className="stat-label">Peor caso (P95)</div>
-            </div>
+            ))}
           </div>
 
-          {/* Fila de riesgo */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="glass-card p-4 text-center">
-              <ShieldAlert className="w-5 h-5 text-destructive mx-auto mb-2" />
-              <div className="stat-value text-xl text-destructive">
-                {formatMoney(simResults.var95)}
-              </div>
-              <div className="stat-label">VaR 95% (mensual)</div>
-            </div>
-            <div className="glass-card p-4 text-center">
-              <Activity className="w-5 h-5 text-destructive mx-auto mb-2" />
-              <div className="stat-value text-xl text-destructive">
-                {formatMoney(simResults.cvar)}
-              </div>
-              <div className="stat-label">CVaR (cola 5%)</div>
-            </div>
-            <div className="glass-card p-4 text-center">
-              <CalendarDays className="w-5 h-5 text-primary mx-auto mb-2" />
-              <div
-                className={`stat-value text-xl ${
-                  simResults.annualExpected >= 0
-                    ? "text-success"
-                    : "text-destructive"
-                }`}
-              >
-                {formatMoney(simResults.annualExpected)}
-              </div>
-              <div className="stat-label">Utilidad anual</div>
-            </div>
-            <div className="glass-card p-4 text-center">
-              <Zap className="w-5 h-5 text-warning mx-auto mb-2" />
-              <div className="stat-value text-xl text-warning">
-                {simResults.dpmo.toLocaleString()}
-              </div>
-              <div className="stat-label">DPMO</div>
-            </div>
-          </div>
+          {/* ── IA Advisor — siempre visible, auto-arranca ──────────────── */}
+          <div className="rounded-2xl border overflow-hidden"
+            style={{ borderColor:"hsla(265,80%,62%,0.35)", background:"hsla(265,14%,9%,0.85)" }}>
 
-          {/* ── IA Advisor Chat ────────────────────────────────────────────── */}
-          <div
-            className="rounded-2xl border overflow-hidden transition-all duration-300"
-            style={{
-              borderColor: aiOpen ? "hsla(265,80%,62%,0.4)" : "hsla(215,22%,28%,0.35)",
-              background: aiOpen ? "hsla(265,80%,10%,0.6)" : "hsla(215,22%,10%,0.4)",
-            }}
-          >
-            {/* Toggle header */}
-            <button
-              className="w-full flex items-center gap-3 px-4 py-3 transition-colors hover:bg-white/5"
-              onClick={() => {
-                setAiOpen(o => !o);
-                if (!aiOpen && aiMessages.length === 0) {
-                  setTimeout(() => sendAiMessage(), 150);
-                }
-              }}
-            >
-              <div
-                className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 border"
-                style={{
-                  background: "hsla(265,80%,62%,0.15)",
-                  borderColor: "hsla(265,80%,62%,0.35)",
-                }}
-              >
-                <Sparkles className="w-4 h-4" style={{ color: "hsl(265,80%,72%)" }} />
+            {/* Header fijo */}
+            <div className="flex items-center gap-3 px-4 py-3 border-b"
+              style={{ borderColor:"hsla(265,80%,62%,0.15)" }}>
+              <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0"
+                style={{ background:"hsla(265,80%,62%,0.18)", border:"1px solid hsla(265,80%,62%,0.35)" }}>
+                <Sparkles className="w-4 h-4" style={{ color:"hsl(265,80%,72%)" }} />
               </div>
-              <div className="flex-1 text-left">
-                <span className="text-sm font-semibold text-foreground">Asesor IA</span>
-                <span className="text-[10px] text-muted-foreground ml-2">
-                  {aiMessages.length === 0 ? "Pregunta sobre tu proceso" :
-                   aiStreaming ? "Escribiendo…" :
-                   `${aiMessages.length} mensaje${aiMessages.length > 1 ? "s" : ""}`}
-                </span>
+              <div className="flex-1">
+                <p className="text-sm font-semibold text-foreground leading-none">Asesor IA</p>
+                <p className="text-[10px] mt-0.5" style={{ color:"hsl(265,60%,65%)" }}>
+                  {aiStreaming ? "Escribiendo…" : "Pregunta lo que quieras sobre tu proceso"}
+                </p>
               </div>
-              {aiMessages.length > 0 && (
-                <span
-                  className="text-[10px] px-2 py-0.5 rounded-full border mr-2"
-                  style={{ borderColor: "hsla(265,80%,62%,0.3)", color: "hsl(265,80%,70%)" }}
-                >
-                  activo
-                </span>
+              {aiStreaming && (
+                <button onClick={() => { aiAbortRef.current?.abort(); setAiStreaming(false); }}
+                  className="text-[10px] px-2 py-1 rounded-lg border border-destructive/30 text-destructive hover:bg-destructive/10 transition-colors flex-shrink-0">
+                  <StopCircle className="w-3.5 h-3.5 inline mr-1" />Detener
+                </button>
               )}
-              <span className="text-muted-foreground text-xs">{aiOpen ? "▲" : "▼"}</span>
-            </button>
+            </div>
 
-            {/* Chat body */}
-            {aiOpen && (
-              <div className="border-t" style={{ borderColor: "hsla(265,80%,62%,0.15)" }}>
-                {/* Messages */}
-                <div
-                  ref={aiScrollRef}
-                  className="px-4 py-3 space-y-3 overflow-y-auto"
-                  style={{ maxHeight: "340px" }}
-                >
-                  {aiMessages.length === 0 && aiStreaming && (
-                    <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
-                      <div className="flex gap-1">
-                        {[0,1,2].map(i => (
-                          <div key={i} className="w-1.5 h-1.5 rounded-full bg-purple-400"
-                            style={{ animation: `pulse 1s ease-in-out ${i*0.2}s infinite` }} />
-                        ))}
-                      </div>
-                      Analizando tu proceso…
-                    </div>
-                  )}
+            {/* Mensajes */}
+            <div ref={aiScrollRef} className="px-4 py-4 space-y-3 overflow-y-auto"
+              style={{ minHeight:"120px", maxHeight:"320px" }}>
 
-                  {aiMessages.map((msg, i) => (
-                    <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
-                      <div
-                        className="rounded-2xl px-3 py-2 text-sm leading-relaxed max-w-[85%] whitespace-pre-wrap"
-                        style={{
-                          background: msg.role === "user"
-                            ? "hsla(265,80%,62%,0.2)"
-                            : "hsla(215,22%,16%,0.8)",
-                          borderRadius: msg.role === "user"
-                            ? "18px 18px 4px 18px"
-                            : "18px 18px 18px 4px",
-                          color: "hsl(210,20%,90%)",
-                        }}
-                      >
-                        {msg.content}
-                        {aiStreaming && i === aiMessages.length - 1 && msg.role === "assistant" && (
-                          <span
-                            className="inline-block w-0.5 h-3.5 ml-0.5 align-middle rounded-full bg-purple-400"
-                            style={{ animation: "pulse 0.7s ease-in-out infinite" }}
-                          />
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Quick chips — solo si no hay conversación aún */}
-                {aiMessages.length <= 1 && !aiStreaming && (
-                  <div className="px-4 pb-2 flex flex-wrap gap-1.5">
-                    {QUICK_CHIPS.map(chip => (
-                      <button
-                        key={chip}
-                        onClick={() => sendAiMessage(chip)}
-                        className="text-[10px] px-2.5 py-1 rounded-full border transition-colors hover:bg-white/10"
-                        style={{
-                          borderColor: "hsla(265,80%,62%,0.3)",
-                          color: "hsl(265,80%,72%)",
-                        }}
-                      >
-                        {chip}
-                      </button>
+              {/* Typing indicator cuando arranca */}
+              {aiStreaming && aiMessages.length === 0 && (
+                <div className="flex items-center gap-2">
+                  <div className="flex gap-1 px-3 py-2 rounded-2xl"
+                    style={{ background:"hsla(215,22%,18%,0.9)", borderRadius:"18px 18px 18px 4px" }}>
+                    {[0,1,2].map(i=>(
+                      <div key={i} className="w-1.5 h-1.5 rounded-full"
+                        style={{ background:"hsl(265,60%,65%)", animation:`pulse 1s ease-in-out ${i*0.2}s infinite` }}/>
                     ))}
                   </div>
-                )}
-
-                {/* Input */}
-                <div
-                  className="flex items-center gap-2 px-3 pb-3 pt-1"
-                >
-                  <input
-                    ref={aiInputRef}
-                    value={aiInput}
-                    onChange={e => setAiInput(e.target.value)}
-                    onKeyDown={e => {
-                      if (e.key === "Enter" && !e.shiftKey && aiInput.trim()) {
-                        e.preventDefault();
-                        sendAiMessage(aiInput.trim());
-                      }
-                    }}
-                    placeholder="Pregunta algo sobre el proceso…"
-                    className="flex-1 text-xs rounded-xl px-3 py-2 outline-none border bg-transparent transition-colors"
-                    style={{
-                      borderColor: "hsla(265,80%,62%,0.25)",
-                      color: "hsl(210,20%,90%)",
-                    }}
-                    disabled={aiStreaming}
-                  />
-                  {aiStreaming ? (
-                    <button
-                      onClick={() => { aiAbortRef.current?.abort(); setAiStreaming(false); }}
-                      className="p-2 rounded-xl border border-destructive/30 text-destructive hover:bg-destructive/10 transition-colors flex-shrink-0"
-                    >
-                      <StopCircle className="w-4 h-4" />
-                    </button>
-                  ) : (
-                    <button
-                      onClick={() => aiInput.trim() && sendAiMessage(aiInput.trim())}
-                      disabled={!aiInput.trim()}
-                      className="p-2 rounded-xl border transition-colors flex-shrink-0 disabled:opacity-40"
-                      style={{
-                        background: "hsla(265,80%,62%,0.2)",
-                        borderColor: "hsla(265,80%,62%,0.35)",
-                        color: "hsl(265,80%,72%)",
-                      }}
-                    >
-                      <Zap className="w-4 h-4" />
-                    </button>
-                  )}
                 </div>
+              )}
+
+              {aiMessages.map((msg, i) => (
+                <div key={i} className={`flex ${msg.role==="user"?"justify-end":"justify-start"}`}>
+                  <div className="px-3 py-2 text-sm leading-relaxed whitespace-pre-wrap"
+                    style={{
+                      maxWidth:"88%",
+                      background: msg.role==="user" ? "hsla(265,80%,55%,0.22)" : "hsla(215,22%,18%,0.9)",
+                      borderRadius: msg.role==="user" ? "18px 18px 4px 18px" : "18px 18px 18px 4px",
+                      color:"hsl(210,18%,92%)",
+                    }}>
+                    {msg.content || (aiStreaming && i===aiMessages.length-1 ? "" : "…")}
+                    {aiStreaming && i===aiMessages.length-1 && msg.role==="assistant" && (
+                      <span className="inline-block w-0.5 h-3.5 ml-0.5 align-middle rounded-full"
+                        style={{ background:"hsl(265,60%,65%)", animation:"pulse 0.7s ease-in-out infinite" }}/>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Quick chips */}
+            {aiMessages.length <= 1 && !aiStreaming && (
+              <div className="px-4 pb-2 flex flex-wrap gap-1.5">
+                {QUICK_CHIPS.map(chip=>(
+                  <button key={chip} onClick={()=>sendAiMessage(chip)}
+                    className="text-[11px] px-3 py-1 rounded-full border transition-all hover:bg-white/8"
+                    style={{ borderColor:"hsla(265,80%,62%,0.3)", color:"hsl(265,70%,72%)" }}>
+                    {chip}
+                  </button>
+                ))}
               </div>
             )}
+
+            {/* Input */}
+            <div className="flex items-center gap-2 px-3 pb-3 pt-1">
+              <input ref={aiInputRef} value={aiInput}
+                onChange={e=>setAiInput(e.target.value)}
+                onKeyDown={e=>{
+                  if(e.key==="Enter"&&!e.shiftKey&&aiInput.trim()){
+                    e.preventDefault(); sendAiMessage(aiInput.trim());
+                  }
+                }}
+                placeholder="Escribe tu pregunta o usa los botones de arriba…"
+                disabled={aiStreaming}
+                className="flex-1 text-xs rounded-xl px-3 py-2.5 outline-none bg-transparent border"
+                style={{ borderColor:"hsla(265,80%,62%,0.22)", color:"hsl(210,18%,90%)" }}
+              />
+              <button onClick={()=>aiInput.trim()&&sendAiMessage(aiInput.trim())}
+                disabled={!aiInput.trim()||aiStreaming}
+                className="p-2.5 rounded-xl border transition-all flex-shrink-0 disabled:opacity-35"
+                style={{ background:"hsla(265,80%,62%,0.18)", borderColor:"hsla(265,80%,62%,0.35)", color:"hsl(265,80%,72%)" }}>
+                <Zap className="w-4 h-4" />
+              </button>
+            </div>
           </div>
 
           {/* Fila de capacidad */}
@@ -3101,7 +3028,6 @@ const MonteCarloSimulator: React.FC = () => {
               </div>
             );
           })()}
-          {/* ── IA Advisor — chat integrado ───────────────────────────────── */}
         </>
       )}
     </div>
