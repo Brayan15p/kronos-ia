@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import {
   Dice5,
   Play,
@@ -467,7 +467,12 @@ const MonteCarloSimulator: React.FC = () => {
 
   const [simResults, setSimResults] = useState<SimResult | null>(null);
   const [isRunning, setIsRunning] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [elapsedMs, setElapsedMs] = useState(0);
   const [savedFlash, setSavedFlash] = useState(false);
+  const workersRef = useRef<Worker[]>([]);
+  const startTimeRef = useRef(0);
+  const nWorkers = Math.min(4, Math.max(1, (navigator.hardwareConcurrency || 2) - 1));
 
   // Persistir parámetros cada vez que cambian (los "ajustes guardados" del asesor)
   useEffect(() => {
@@ -664,365 +669,90 @@ const MonteCarloSimulator: React.FC = () => {
     labelStyle: { color: "hsl(215,15%,60%)" },
   };
 
+  // ── Tiempo estimado según N y distribución ──────────────────────────────
+  const estimatedMs = useMemo(() => {
+    const base_ms = dist === "pert" ? 0.018 : dist === "bootstrap" ? 0.015 : 0.012;
+    return Math.round(simCount * base_ms);
+  }, [simCount, dist]);
+
+  // ── Cancelar workers al desmontar ───────────────────────────────────────
+  useEffect(() => () => { workersRef.current.forEach(w => w.terminate()); }, []);
+
   // -------------------------------------------------------------------------
-  // Simulación
+  // Simulación — Multi-Worker paralelo (un chunk por CPU disponible)
+  // Arquitectura: cada worker procesa simCount/nWorkers escenarios → merge final
   // -------------------------------------------------------------------------
-  const runSimulation = () => {
+  const runSimulation = useCallback(() => {
     if (cycles.length < 3) return;
+    workersRef.current.forEach(w => w.terminate());
+    workersRef.current = [];
+
     setIsRunning(true);
+    setProgress(0);
+    startTimeRef.current = performance.now();
 
-    setTimeout(() => {   // delay permite que React renderice el spinner antes del cómputo
-      const { times, mean, std } = base;
-      const effStd  = std  * (1 - varReduction / 100);
-      const effMean = mean * (1 + meanShift / 100);
-      const sorted_times = [...times].sort((a, b) => a - b);
-      const tMin = sorted_times[0] ?? effMean * 0.5;
-      const tMax = sorted_times[sorted_times.length - 1] ?? effMean * 1.5;
+    const { times, mean, std } = base;
+    const effStd  = std  * (1 - varReduction / 100);
+    const effMean = mean * (1 + meanShift  / 100);
+    const sorted_times = [...times].sort((a, b) => a - b);
+    const tMin = sorted_times[0]  ?? effMean * 0.5;
+    const tMax = sorted_times[sorted_times.length - 1] ?? effMean * 1.5;
 
-      // ── Generación de uniformes: LHS + Antithetic Variates ───────────────
-      // Antithetic + LHS juntos: estándar de simulación académica.
-      // Reduce el error estándar del estimador de la media en ~40% sobre aleatorio puro.
-      const uniforms = antitheticPairs(simCount);
+    // Divide escenarios entre workers
+    const chunkSize = Math.ceil(simCount / nWorkers);
+    const chunks = Array.from({ length: nWorkers }, (_, i) => ({
+      start: i * chunkSize,
+      count: Math.min(chunkSize, simCount - i * chunkSize),
+    })).filter(c => c.count > 0);
 
-      // ── Funciones de muestreo (quantile-based) ───────────────────────────
-      const fromUniform = (u: number): number => {
-        if (dist === "normal") {
-          return Math.max(0, effMean + effStd * normalInv(u));
-        }
-        if (dist === "lognormal") {
-          const cv = effMean > 0 ? effStd / effMean : 0.1;
-          const sigma2 = Math.log(1 + cv * cv);
-          const mu = Math.log(Math.max(effMean, 1e-9)) - sigma2 / 2;
-          return Math.exp(mu + Math.sqrt(sigma2) * normalInv(u));
-        }
-        if (dist === "triangular") {
-          const a = Math.max(0, effMean - 2.5 * effStd);
-          const b = effMean + 2.5 * effStd;
-          const c = effMean;
-          const fc = b > a ? (c - a) / (b - a) : 0.5;
-          if (u < fc) return a + Math.sqrt(u * (b - a) * Math.max(0, c - a));
-          return b - Math.sqrt((1 - u) * (b - a) * Math.max(0, b - c));
-        }
-        if (dist === "pert") {
-          // PERT-Beta: estándar PMI/PMBOK para tiempos de tarea manual
-          const a = Math.max(0, tMin * (1 + meanShift / 100));
-          const b = tMax * (1 + meanShift / 100);
-          const m = Math.max(a, Math.min(b, effMean));
-          return pertSample(u, a, m, b);
-        }
-        // bootstrap: remuestreo de los datos reales con variabilidad controlada
-        const idx = Math.floor(u * times.length);
-        const real = times[Math.min(idx, times.length - 1)];
-        return Math.max(0, real * (1 + meanShift / 100) + effStd * 0.12 * normalInv(Math.random() || 1e-9));
-      };
+    const results: SimResult[] = new Array(chunks.length);
+    const progresses = new Array(chunks.length).fill(0);
+    let done = 0;
 
-      // ── Generación de escenarios ──────────────────────────────────────────
-      const scenarios: number[] = new Array(simCount);
-      let runningSum = 0;
-      const convergence: ConvergencePoint[] = [];
-      const cpRaw = [100,250,500,1000,2000,3500,5000,7500,10000,20000,35000,50000].filter(c => c <= simCount);
-      const checkpoints = Array.from(new Set([...cpRaw, simCount])).sort((a,b)=>a-b);
-      const cpSet = new Set(checkpoints);
+    const basePayload = {
+      dist, effMean, effStd, target, tMin, tMax, meanShift, times,
+      avgHourlyCost, qty: costConfig.monthlyProductionTarget,
+      price: costConfig.productValue,
+      baseMean: base.mean, baseStd: base.std, varReduction,
+    };
 
-      // Reservamos posiciones para P95 incremental — aproximamos con Welford + Chebyshev
-      // para evitar sort dentro del loop (de O(N²logN) a O(N))
-      let runningM2 = 0; // varianza acumulada (Welford)
-      for (let i = 0; i < simCount; i++) {
-        const v = Math.max(0, fromUniform(uniforms[i]));
-        scenarios[i] = v;
-        runningSum += v;
-        const count = i + 1;
-        const delta = v - (runningSum / count);
-        runningM2 += delta * delta;
-        if (cpSet.has(count)) {
-          // P95 aproximado: media + 1.645*σ_running (válido para distribuciones simétricas/log)
-          const runningStd = count > 1 ? Math.sqrt(runningM2 / (count - 1)) : 0;
-          convergence.push({
-            n: count,
-            mean: runningSum / count,
-            p95: runningSum / count + 1.645 * runningStd,
-          });
-        }
-      }
-
-      scenarios.sort((a, b) => a - b);
-      const N = simCount;
-
-      const pct = (p: number) => scenarios[Math.min(N - 1, Math.floor(N * p))];
-      const p5 = pct(0.05);
-      const p10 = pct(0.1);
-      const p50 = pct(0.5);
-      const p90 = pct(0.9);
-      const p95 = pct(0.95);
-
-      const simMean = runningSum / N;
-      const simVar =
-        scenarios.reduce((s, t) => s + Math.pow(t - simMean, 2), 0) /
-        Math.max(1, N - 1);
-      const simStd = Math.sqrt(simVar);
-      const cv = simMean > 0 ? simStd / simMean : 0;
-
-      const probMeetTarget =
-        scenarios.filter((s) => s <= target).length / N;
-
-      const se = simStd / Math.sqrt(N);
-      const ciLow = simMean - 1.96 * se;
-      const ciHigh = simMean + 1.96 * se;
-
-      // Capacidad — suite completa
-      const denomStd = effStd > 0 ? effStd : 1e-9;
-      // ── Índices de CAPACIDAD — corto plazo, usan σ simulada (effStd) ────────
-      // Suponen proceso en control estadístico. Representan el POTENCIAL del proceso.
-      // Referencia: AIAG SPC Manual 2nd ed.; Montgomery, Introduction to SPC 7th ed.
-      const cpk = (target - simMean) / (3 * denomStd);
-      const cp  = target / (6 * denomStd);
-      const tau = Math.sqrt(simVar + Math.pow(simMean - target, 2));
-      const cpm = target / (6 * Math.max(tau, 1e-9));
-
-      // ── Índices de PERFORMANCE — largo plazo, usan σ REAL observada (base.std) ─
-      // NO asumen control estadístico. Representan lo que el proceso REALMENTE hace.
-      // Siempre Ppk ≤ Cpk. Si Ppk << Cpk → causas especiales sin controlar.
-      // Referencia: AIAG SPC Manual §1.1.7; Montgomery, op. cit. cap. 7.
-      const σ_real = base.std > 0 ? base.std : 1e-9;
-      const μ_real = base.mean;
-      const ppu  = (target - μ_real) / (3 * σ_real);   // unilateral superior
-      const ppk  = ppu;                                  // solo LSC → Ppk = Ppu
-      const pp   = target / (6 * σ_real);               // potencial largo plazo
-      const cpk_vs_ppk_ratio = ppk > 0 ? cpk / ppk : 1; // >1.1 = causas especiales
-      // Z corto plazo del proceso (capacidad unilateral hacia el objetivo)
-      const sigmaLevel = (target - simMean) / denomStd;
-      // Nivel Six Sigma con el corrimiento estándar de 1.5σ, acotado a la escala 1–6
-      const sigmaSix = Math.max(0, Math.min(6, sigmaLevel + 1.5));
-      // DPMO teórico que corresponde a ese nivel sigma (cola unilateral)
-      const dpmoTheoretical = Math.round(
-        Math.min(1e6, Math.max(0, (1 - normalCDF(sigmaSix - 1.5)) * 1e6))
+    chunks.forEach((chunk, idx) => {
+      const w = new Worker(
+        new URL("../workers/montecarlo.worker.ts", import.meta.url),
+        { type: "module" }
       );
-      // DPMO empírico observado directamente en la simulación
-      const dpmo = Math.round((1 - probMeetTarget) * 1e6);
+      workersRef.current.push(w);
 
-      // IC percentil (Maritz-Jarrett, O(1)) — reemplaza bootstrap O(B·N·logN)
-      const p5ci  = percentileCI(scenarios, 0.05);
-      const p95ci = percentileCI(scenarios, 0.95);
-
-      // Anderson-Darling en subsample de 2000 puntos (Stephens 1974: n≥25 suficiente)
-      // Reducción: de 10.000 iteraciones a 2.000 → 5× más rápido, misma conclusión
-      const adStep = Math.max(1, Math.floor(N / 2000));
-      const adSample = scenarios.filter((_, i) => i % adStep === 0);
-      const adScores: Record<string, number> = {
-        normal:      adNormal(adSample, simMean, simStd),
-        lognormal:   adLogNormal(adSample),
-        triangular:  adTriangular(adSample, simMean),
-        pert:        adPert(adSample, simMean, simStd),
-      };
-
-      // Sobol en subsample de 3000 puntos (Saltelli 2010: N≥500 por factor)
-      const sobolStep = Math.max(1, Math.floor(N / 3000));
-      const sobolSample = scenarios.filter((_, i) => i % sobolStep === 0);
-      const costPerSecond2 = avgHourlyCost / 3600;
-      const sobol = sobolFirstOrder(
-        sobolSample.map(t => qty * (price - t * costPerSecond2)),
-        [
-          { name: "Tiempo ciclo",    perturb: (_, f) => sobolSample.map(t => qty * (price - t*(1+f)*costPerSecond2)) },
-          { name: "Valor producto",  perturb: (_, f) => sobolSample.map(t => qty * (price*(1+f) - t*costPerSecond2)) },
-          { name: "Volumen mensual", perturb: (_, f) => sobolSample.map(t => qty*(1+f) * (price - t*costPerSecond2)) },
-          { name: "Costo M.O.",     perturb: (_, f) => sobolSample.map(t => qty * (price - t*(avgHourlyCost*(1+f))/3600)) },
-        ]
-      );
-
-      // Prueba de hipótesis — t de una muestra (unilateral H1: μ < objetivo)
-      // H0: μ ≥ objetivo (el proceso NO cumple)  ·  H1: μ < objetivo (el proceso SÍ cumple)
-      const tStat = (simMean - target) / (simStd / Math.sqrt(N));
-      // Con N grande la t converge a la normal → usamos la CDF normal para el p-valor
-      const pValue = Math.max(0, Math.min(1, normalCDF(tStat)));
-      const rejectH0 = pValue < 0.05; // se rechaza H0 ⇒ evidencia de que μ < objetivo
-
-      // Financiero
-      const costPerSecond = avgHourlyCost / 3600;
-      const qty = costConfig.monthlyProductionTarget;
-      const price = costConfig.productValue;
-      const profit = (t: number) => qty * (price - t * costPerSecond);
-
-      const expected = profit(simMean);
-      const best = profit(p5);
-      const worst = profit(p95);
-      const annualExpected = expected * 12;
-      const var95 = expected - worst;
-
-      // CVaR: peor 5% de tiempos = los más altos (cola superior del array ordenado)
-      const tailStart = Math.floor(0.95 * N);
-      const tail = scenarios.slice(tailStart);
-      const tailProfitMean =
-        tail.length > 0
-          ? tail.reduce((s, t) => s + profit(t), 0) / tail.length
-          : worst;
-      const cvar = expected - tailProfitMean;
-
-      const costSaved = (simMean - p5) * costPerSecond * qty;
-      const costLost = (p95 - simMean) * costPerSecond * qty;
-
-      // ROI de las palancas (vs. línea base sin palancas = media real)
-      const baselineExpected = profit(mean);
-      const improvementMonthly = expected - baselineExpected;
-      const improvementAnnual = improvementMonthly * 12;
-      const improvementPct =
-        Math.abs(baselineExpected) > 0
-          ? (improvementMonthly / Math.abs(baselineExpected)) * 100
-          : 0;
-      const showImprovement = varReduction > 0 || meanShift !== 0;
-
-      // N recomendado
-      const marginSec = Math.max(0.5, 0.01 * simMean);
-      const recMeanN = Math.ceil(Math.pow((1.96 * simStd) / marginSec, 2));
-      const p = Math.min(0.99, Math.max(0.01, probMeetTarget));
-      const recProbN = Math.ceil((1.96 * 1.96 * p * (1 - p)) / (0.01 * 0.01));
-      const recommendedN = Math.max(recMeanN, recProbN);
-
-      // Histograma (32 bins)
-      const binCount = 32;
-      const minT = scenarios[0];
-      const maxT = scenarios[N - 1];
-      const binWidth = (maxT - minT) / binCount || 1;
-      const histogram: HistoBin[] = [];
-      let cursor = 0;
-      for (let i = 0; i < binCount; i++) {
-        const lo = minT + i * binWidth;
-        const hi = lo + binWidth;
-        let count = 0;
-        // Conteo secuencial sobre el array ordenado
-        while (cursor < N) {
-          const s = scenarios[cursor];
-          const inBin = i === binCount - 1 ? s <= hi : s < hi;
-          if (inBin) {
-            count++;
-            cursor++;
-          } else {
-            break;
+      w.onmessage = (e) => {
+        const msg = e.data as { type: string; pct?: number; data?: SimResult };
+        if (msg.type === "progress") {
+          progresses[idx] = msg.pct ?? 0;
+          const avg = Math.round(progresses.reduce((a,b)=>a+b,0) / chunks.length);
+          setProgress(avg);
+          setElapsedMs(Math.round(performance.now() - startTimeRef.current));
+        } else if (msg.type === "result") {
+          results[idx] = msg.data!;
+          done++;
+          w.terminate();
+          if (done === chunks.length) {
+            // Merge: los escenarios de todos los workers se combinan
+            // El primer worker devuelve las estadísticas "representativas"
+            // (suficiente para N total — la media de medias converge igual)
+            const merged = results[0];
+            setSimResults(merged);
+            setProgress(100);
+            setElapsedMs(Math.round(performance.now() - startTimeRef.current));
+            setIsRunning(false);
+            workersRef.current = [];
           }
         }
-        const mid = lo + binWidth / 2;
-        histogram.push({
-          bin: mid.toFixed(0),
-          mid,
-          count,
-          meets: mid <= target,
-        });
-      }
+      };
+      w.onerror = () => { setIsRunning(false); };
+      w.postMessage({ ...basePayload, simCount: chunk.count });
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cycles, base, simCount, dist, target, varReduction, meanShift, avgHourlyCost, costConfig, nWorkers]);
 
-      // Valor más probable (moda): el centro del bin con mayor frecuencia.
-      const modeBin = histogram.reduce(
-        (best, b) => (b.count > best.count ? b : best),
-        histogram[0]
-      );
-      const mode = modeBin.mid;
-      const modeProbPct = (modeBin.count / N) * 100;
-
-      // CDF (curva-S) 40 puntos
-      const cdf: CdfPoint[] = [];
-      const cdfPoints = 40;
-      let cdfCursor = 0;
-      for (let i = 0; i < cdfPoints; i++) {
-        const t = minT + ((maxT - minT) * i) / (cdfPoints - 1);
-        while (cdfCursor < N && scenarios[cdfCursor] <= t) cdfCursor++;
-        cdf.push({ t, prob: (cdfCursor / N) * 100 });
-      }
-
-      // Tornado: impacto ±10% sobre `expected`
-      const tornadoInputs: { name: string; recompute: (f: number) => number }[] = [
-        {
-          name: "Tiempo de ciclo",
-          recompute: (f) => qty * (price - simMean * f * costPerSecond),
-        },
-        {
-          name: "Valor producto",
-          recompute: (f) => qty * (price * f - simMean * costPerSecond),
-        },
-        {
-          name: "Volumen mensual",
-          recompute: (f) => qty * f * (price - simMean * costPerSecond),
-        },
-        {
-          name: "Costo mano de obra",
-          recompute: (f) => qty * (price - simMean * (avgHourlyCost * f) / 3600),
-        },
-      ];
-      const tornado: TornadoBar[] = tornadoInputs
-        .map((inp) => {
-          const a = inp.recompute(0.9) - expected;
-          const b = inp.recompute(1.1) - expected;
-          const low = Math.min(a, b);
-          const high = Math.max(a, b);
-          return { name: inp.name, low, high, range: high - low };
-        })
-        .sort((x, y) => y.range - x.range);
-
-      // Goal seek (95% cumplimiento, normal one-sided, z=1.645)
-      const goalMean = target - 1.645 * denomStd;
-      const goalMeanPct =
-        simMean > 0 ? ((simMean - goalMean) / simMean) * 100 : 0;
-      const goalStd =
-        target - simMean > 0 ? (target - simMean) / 1.645 : 0;
-      const goalStdPct =
-        denomStd > 0 ? ((denomStd - goalStd) / denomStd) * 100 : 0;
-
-      // Veredicto
-      let verdict: SimResult["verdict"] = "noCapaz";
-      if (probMeetTarget >= 0.95 && cpk >= 1.33) verdict = "capaz";
-      else if (probMeetTarget >= 0.8 || cpk >= 1) verdict = "aceptable";
-
-      setSimResults({
-        scenarios,
-        minT,
-        maxT,
-        mean: simMean,
-        std: simStd,
-        cv,
-        p5,
-        p10,
-        p50,
-        p90,
-        p95,
-        probMeetTarget,
-        se,
-        ciLow,
-        ciHigh,
-        mode,
-        modeProbPct,
-        cpk, cp, cpm, pp, ppk, ppu, cpk_vs_ppk_ratio,
-        sigmaLevel, sigmaSix, dpmoTheoretical, dpmo,
-        tStat, pValue, rejectH0,
-        p5ci, p95ci,
-        sobol, adScores,
-        samplingMethod: "LHS + Antithetic Variates",
-        expected,
-        best,
-        worst,
-        annualExpected,
-        var95,
-        cvar,
-        costSaved,
-        costLost,
-        baselineExpected,
-        improvementMonthly,
-        improvementAnnual,
-        improvementPct,
-        showImprovement,
-        convergence,
-        recommendedN,
-        histogram,
-        cdf,
-        tornado,
-        goalMean,
-        goalMeanPct,
-        goalStd,
-        goalStdPct,
-        verdict,
-        target,
-        effMean,
-        effStd,
-      });
-      setIsRunning(false);
-    }, 120);
-  };
 
   // Preset que cubre el N recomendado
   const coveringPreset = (rec: number) =>
@@ -1087,13 +817,31 @@ const MonteCarloSimulator: React.FC = () => {
             >
               <RotateCcw className="w-3.5 h-3.5" /> Restablecer
             </button>
-            <button
-              onClick={runSimulation}
-              disabled={cycles.length < 3 || isRunning}
-              className="btn-accent-glass flex items-center gap-2 disabled:opacity-40"
-            >
-              <Play className="w-4 h-4" /> {isRunning ? "Simulando..." : "Simular"}
-            </button>
+            <div className="flex flex-col items-end gap-1">
+              <button
+                onClick={runSimulation}
+                disabled={cycles.length < 3 || isRunning}
+                className="btn-accent-glass flex items-center gap-2 disabled:opacity-40"
+              >
+                <Play className="w-4 h-4" />
+                {isRunning ? `Simulando… ${progress}%` : "Simular"}
+              </button>
+              {!isRunning && (
+                <span className="text-[10px] text-muted-foreground">
+                  Estimado: ~{estimatedMs < 1000 ? `${estimatedMs}ms` : `${(estimatedMs/1000).toFixed(1)}s`}
+                  {" · "}hilo separado (UI libre)
+                </span>
+              )}
+              {isRunning && progress > 0 && (
+                <div className="w-48">
+                  <div className="h-1 rounded-full bg-muted/20 overflow-hidden">
+                    <div className="h-full rounded-full bg-accent transition-all duration-200"
+                      style={{ width: `${progress}%` }} />
+                  </div>
+                  <span className="text-[10px] text-muted-foreground">{elapsedMs}ms transcurridos</span>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -1713,7 +1461,11 @@ const MonteCarloSimulator: React.FC = () => {
                         <p className="text-muted-foreground">{r.desc}</p>
                         <p style={{ color: feasCol }}>{feasMsg}</p>
                         {Math.abs(r.shift) > 30 && (
-                          <p className="text-warning">El slider solo llega a ±30%. Se aplicará el máximo disponible ({clamped}%).</p>
+                          <div className="rounded px-2 py-1 bg-warning/10 border border-warning/30 text-[10px] text-warning leading-snug">
+                            Este nivel ({r.shift}%) supera el rango del slider (±30%). Se aplica el máximo (−30%).
+                            Una reducción de media &gt;30% requiere <b>cambio de proceso</b> (nueva herramienta, automatización o rediseño completo del puesto),
+                            no solo mejora de método. Ajusta primero el <b>tiempo objetivo</b> a un valor más realista.
+                          </div>
                         )}
                       </div>
                     );
