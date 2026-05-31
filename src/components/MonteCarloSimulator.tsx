@@ -453,7 +453,7 @@ const MonteCarloSimulator: React.FC = () => {
   const saved = useMemo(() => {
     try {
       const raw = localStorage.getItem(MC_STORAGE_KEY);
-      return raw ? (JSON.parse(raw) as Partial<{ dist: DistKey; simCount: number; target: number; varReduction: number; meanShift: number }>) : null;
+      return raw ? (JSON.parse(raw) as Partial<{ dist: DistKey; simCount: number; target: number; varReduction: number; meanShift: number; samplingMode: 'lhs' | 'qmc' }>) : null;
     } catch {
       return null;
     }
@@ -464,6 +464,7 @@ const MonteCarloSimulator: React.FC = () => {
   const [target, setTarget] = useState(saved?.target ?? costConfig.targetCycleTime);
   const [varReduction, setVarReduction] = useState(saved?.varReduction ?? 0); // 0-80 %
   const [meanShift, setMeanShift] = useState(saved?.meanShift ?? 0); // -30..+30 %
+  const [samplingMode, setSamplingMode] = useState<'lhs' | 'qmc'>(saved?.samplingMode ?? 'lhs');
 
   const [simResults, setSimResults] = useState<SimResult | null>(null);
   const [isRunning, setIsRunning] = useState(false);
@@ -479,7 +480,7 @@ const MonteCarloSimulator: React.FC = () => {
     try {
       localStorage.setItem(
         MC_STORAGE_KEY,
-        JSON.stringify({ dist, simCount, target, varReduction, meanShift })
+        JSON.stringify({ dist, simCount, target, varReduction, meanShift, samplingMode })
       );
       setSavedFlash(true);
       const id = setTimeout(() => setSavedFlash(false), 1200);
@@ -487,7 +488,7 @@ const MonteCarloSimulator: React.FC = () => {
     } catch {
       /* almacenamiento no disponible */
     }
-  }, [dist, simCount, target, varReduction, meanShift]);
+  }, [dist, simCount, target, varReduction, meanShift, samplingMode]);
 
   const resetParams = () => {
     setDist("bootstrap");
@@ -495,6 +496,7 @@ const MonteCarloSimulator: React.FC = () => {
     setTarget(costConfig.targetCycleTime);
     setVarReduction(0);
     setMeanShift(0);
+    setSamplingMode('lhs');
     try {
       localStorage.removeItem(MC_STORAGE_KEY);
     } catch {
@@ -714,6 +716,7 @@ const MonteCarloSimulator: React.FC = () => {
       avgHourlyCost, qty: costConfig.monthlyProductionTarget,
       price: costConfig.productValue,
       baseMean: base.mean, baseStd: base.std, varReduction,
+      samplingMode,
     };
 
     chunks.forEach((chunk, idx) => {
@@ -1101,6 +1104,75 @@ const MonteCarloSimulator: React.FC = () => {
                 {cycles.length} ciclos · {operators.length} operarios · costo prom{" "}
                 {formatMoney(avgHourlyCost)}/h
               </div>
+            </div>
+          </div>
+
+          {/* ── Método de muestreo — LHS vs QMC Halton ──────────────────── */}
+          <div className="mt-4 rounded-xl border border-border/30 bg-muted/5 p-4">
+            <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+              <div>
+                <span className="text-xs font-semibold text-foreground">Método de muestreo</span>
+                <p className="text-[10px] text-muted-foreground mt-0.5">
+                  Cómo se distribuyen los {simCount.toLocaleString()} escenarios en el espacio de probabilidad
+                </p>
+              </div>
+              {samplingMode === 'qmc' && (
+                <span className="text-[10px] bg-accent/15 border border-accent/30 text-accent px-2 py-0.5 rounded-full font-semibold">
+                  ★ Convergencia 10× más rápida
+                </span>
+              )}
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              {([
+                {
+                  mode: 'lhs' as const,
+                  title: 'LHS + Antithetic',
+                  subtitle: 'Latin Hypercube Sampling',
+                  desc: 'Estratos equiprobables + pares complementarios. Robusto y universal. Estándar académico.',
+                  badge: 'estándar',
+                  icon: '⚖',
+                  color: 'hsl(265,80%,62%)',
+                },
+                {
+                  mode: 'qmc' as const,
+                  title: 'QMC Halton',
+                  subtitle: 'Quasi-Monte Carlo (base 2, scrambled)',
+                  desc: 'Baja discrepancia: cubre el espacio uniformemente. Converge como O((log N)²/N). Recomendado para N ≤ 20k.',
+                  badge: 'avanzado ★',
+                  icon: '◇',
+                  color: 'hsl(192,90%,50%)',
+                },
+              ] as const).map(({ mode, title, subtitle, desc, badge, icon, color }) => (
+                <button
+                  key={mode}
+                  onClick={() => setSamplingMode(mode)}
+                  className="relative text-left rounded-lg border p-3 transition-all duration-200"
+                  style={{
+                    borderColor: samplingMode === mode ? color + '55' : 'hsla(215,22%,28%,0.4)',
+                    background: samplingMode === mode ? color + '0d' : 'transparent',
+                  }}
+                >
+                  {samplingMode === mode && (
+                    <div className="absolute top-2 right-2 w-2 h-2 rounded-full" style={{ background: color }} />
+                  )}
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <span className="text-base">{icon}</span>
+                    <span className="text-xs font-bold" style={{ color: samplingMode === mode ? color : 'inherit' }}>
+                      {title}
+                    </span>
+                    <span className="text-[9px] px-1.5 py-0.5 rounded-full border ml-auto"
+                      style={{
+                        borderColor: color + '44',
+                        color: samplingMode === mode ? color : 'hsl(215,15%,50%)',
+                        background: samplingMode === mode ? color + '15' : 'transparent',
+                      }}>
+                      {badge}
+                    </span>
+                  </div>
+                  <p className="text-[9px] text-muted-foreground leading-snug font-medium mb-0.5">{subtitle}</p>
+                  <p className="text-[9px] text-muted-foreground/70 leading-snug">{desc}</p>
+                </button>
+              ))}
             </div>
           </div>
 
@@ -2257,19 +2329,183 @@ const MonteCarloSimulator: React.FC = () => {
             )}
           </div>
 
-          {/* Tornado + Goal seek */}
+          {/* ── Tornado Chart — Análisis de Sensibilidad Bidireccional ──────── */}
+          {simResults.tornado && simResults.tornado.length > 0 && (() => {
+            const maxAbs = Math.max(
+              ...simResults.tornado.flatMap(t => [Math.abs(t.low), Math.abs(t.high)]),
+              1
+            );
+            const rowColors = [
+              { bar: 'hsl(192,90%,50%)', glow: 'hsla(192,90%,50%,0.15)' },
+              { bar: 'hsl(265,80%,62%)', glow: 'hsla(265,80%,62%,0.15)' },
+              { bar: 'hsl(38,92%,55%)',  glow: 'hsla(38,92%,55%,0.15)'  },
+              { bar: 'hsl(152,60%,50%)', glow: 'hsla(152,60%,50%,0.15)' },
+            ];
+
+            return (
+              <div className="glass-card p-5 border border-border/30">
+                {/* Header */}
+                <div className="flex items-start gap-3 mb-5 flex-wrap">
+                  <div className="w-9 h-9 rounded-xl flex items-center justify-center bg-warning/10 border border-warning/20 flex-shrink-0">
+                    <TrendingDown className="w-5 h-5 text-warning" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h4 className="text-sm font-display font-bold text-foreground">
+                        Tornado Chart — Análisis de Sensibilidad
+                      </h4>
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-muted/10 border border-border/20 text-muted-foreground">
+                        @RISK · Crystal Ball · McKinsey Ops
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">
+                      Variación en utilidad mensual ante ±10% de cada factor · ordenado por impacto descendente
+                    </p>
+                  </div>
+                  <div className="text-right flex-shrink-0">
+                    <div className="text-[10px] text-muted-foreground">Base ({formatMoney(simResults.expected)}/mes)</div>
+                    <div className="text-xs font-mono text-accent mt-0.5">
+                      {simResults.tornado.length} factores analizados
+                    </div>
+                  </div>
+                </div>
+
+                {/* Column headers */}
+                <div className="flex items-center mb-2">
+                  <div className="w-36 flex-shrink-0" />
+                  <div className="flex-1 grid grid-cols-2 text-[10px] font-semibold">
+                    <div className="text-right pr-3" style={{ color: 'hsl(0,72%,65%)' }}>
+                      ← Impacto negativo
+                    </div>
+                    <div className="pl-3" style={{ color: 'hsl(152,60%,55%)' }}>
+                      Impacto positivo →
+                    </div>
+                  </div>
+                </div>
+
+                {/* Bars */}
+                <div className="space-y-3">
+                  {simResults.tornado.map((bar, i) => {
+                    const leftVal  = Math.min(bar.low, bar.high);
+                    const rightVal = Math.max(bar.low, bar.high);
+                    const leftPct  = Math.abs(leftVal)  / maxAbs * 100;
+                    const rightPct = Math.abs(rightVal) / maxAbs * 100;
+                    const col = rowColors[i % rowColors.length];
+                    const isTop = i === 0;
+
+                    return (
+                      <div
+                        key={bar.name}
+                        className="rounded-xl p-3 border transition-colors"
+                        style={{
+                          borderColor: isTop ? col.bar + '33' : 'hsla(215,22%,28%,0.2)',
+                          background: isTop ? col.glow : 'transparent',
+                        }}
+                      >
+                        {/* Factor label */}
+                        <div className="flex items-center gap-2 mb-2">
+                          <div
+                            className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold flex-shrink-0"
+                            style={{ background: col.bar, color: '#050510' }}
+                          >
+                            {i + 1}
+                          </div>
+                          <span className="text-xs font-semibold text-foreground">{bar.name}</span>
+                          <div className="ml-auto flex items-center gap-3 flex-wrap justify-end">
+                            <span className="text-[10px] text-muted-foreground">
+                              Rango: <span className="font-mono text-foreground">{formatMoney(bar.range)}</span>
+                            </span>
+                            {isTop && (
+                              <span
+                                className="text-[9px] px-1.5 py-0.5 rounded-full font-semibold"
+                                style={{ background: col.bar + '20', color: col.bar, border: `1px solid ${col.bar}40` }}
+                              >
+                                palanca principal
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Bidirectional bar */}
+                        <div className="flex items-stretch h-7 rounded-lg overflow-hidden" style={{ background: 'hsla(215,22%,10%,0.5)' }}>
+                          {/* Left (negative) half */}
+                          <div className="flex-1 flex items-center justify-end pr-px">
+                            <div
+                              className="h-5 rounded-l-sm"
+                              style={{
+                                width: `${leftPct}%`,
+                                background: `linear-gradient(to left, hsl(0,72%,52%), hsla(0,72%,40%,0.6))`,
+                                minWidth: leftPct > 0.5 ? '3px' : '0',
+                                transition: 'width 0.8s cubic-bezier(0.4,0,0.2,1)',
+                              }}
+                            />
+                          </div>
+                          {/* Center axis */}
+                          <div className="w-px bg-border/70 flex-shrink-0" />
+                          {/* Right (positive) half */}
+                          <div className="flex-1 flex items-center justify-start pl-px">
+                            <div
+                              className="h-5 rounded-r-sm"
+                              style={{
+                                width: `${rightPct}%`,
+                                background: `linear-gradient(to right, hsl(152,60%,42%), hsla(152,60%,30%,0.6))`,
+                                minWidth: rightPct > 0.5 ? '3px' : '0',
+                                transition: 'width 0.8s cubic-bezier(0.4,0,0.2,1)',
+                              }}
+                            />
+                          </div>
+                        </div>
+
+                        {/* Value labels below bar */}
+                        <div className="flex items-center mt-1">
+                          <div className="flex-1 text-right pr-3">
+                            <span className="text-[10px] font-mono" style={{ color: 'hsl(0,72%,60%)' }}>
+                              {formatMoney(leftVal)}
+                            </span>
+                            <span className="text-[9px] text-muted-foreground/60 ml-1">
+                              ({bar.low < bar.high ? '+10%' : '−10%'})
+                            </span>
+                          </div>
+                          <div className="w-px flex-shrink-0" />
+                          <div className="flex-1 pl-3">
+                            <span className="text-[9px] text-muted-foreground/60 mr-1">
+                              ({bar.low < bar.high ? '−10%' : '+10%'})
+                            </span>
+                            <span className="text-[10px] font-mono" style={{ color: 'hsl(152,60%,55%)' }}>
+                              +{formatMoney(Math.abs(rightVal))}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <p className="text-[10px] text-muted-foreground mt-4 pt-3 border-t border-border/30">
+                  <b className="text-foreground">Lectura:</b> la barra más ancha (factor #{1}) es la que más afecta la utilidad.
+                  Concentra las mejoras Lean/Six Sigma ahí primero — el resto tiene rendimiento marginal menor.
+                  Metodología: sensibilidad one-at-a-time (OAT) ±10%, manteniendo los demás factores constantes.
+                </p>
+              </div>
+            );
+          })()}
+
+          {/* Sobol + Goal seek */}
           <div className="grid lg:grid-cols-2 gap-4">
-            {/* Sobol — sensibilidad global (reemplaza Tornado) */}
+            {/* Sobol — sensibilidad global */}
             <div className="glass-card p-5">
               <div className="flex items-center gap-2 mb-1">
                 <Activity className="w-4 h-4 text-accent" />
                 <h4 className="text-sm font-display font-bold text-foreground">
                   Índices de Sobol — Sensibilidad Global
                 </h4>
+                <span className="ml-auto text-[9px] bg-accent/10 text-accent px-1.5 py-0.5 rounded-full border border-accent/20">
+                  S₁ primer orden
+                </span>
               </div>
               <p className="text-[10px] text-muted-foreground mb-4">
-                Fracción de la varianza total de la utilidad debida a cada factor (Saltelli et al., 2010, JCP).
-                Más riguroso que el tornado: captura efectos no lineales y de interacción.
+                Fracción de varianza total de la utilidad debida a cada factor (Saltelli et al., 2010, JCP).
+                Captura efectos no lineales — más riguroso que el tornado OAT.
               </p>
               <div className="space-y-3">
                 {simResults.sobol.map((s, i) => (
@@ -2280,7 +2516,7 @@ const MonteCarloSimulator: React.FC = () => {
                     </div>
                     <div className="h-2 rounded-full bg-muted/20 overflow-hidden">
                       <div
-                        className="h-full rounded-full transition-all"
+                        className="h-full rounded-full transition-all duration-700"
                         style={{
                           width: `${Math.min(100, s.si_pct)}%`,
                           background: i === 0
@@ -2296,7 +2532,7 @@ const MonteCarloSimulator: React.FC = () => {
                 ))}
               </div>
               <p className="text-[10px] text-muted-foreground mt-3 border-t border-border/30 pt-2">
-                El factor con mayor S₁ es el <b className="text-accent">palanca principal</b> para mejorar la utilidad.
+                El factor con mayor S₁ es la <b className="text-accent">palanca principal</b> para mejorar la utilidad.
                 Concentra las intervenciones Lean/Six Sigma en ese factor primero.
               </p>
             </div>
