@@ -92,9 +92,14 @@ interface SimResult {
   sigmaSix: number;         // Nivel Six Sigma con corrimiento 1.5σ, acotado a [0, 6]
   dpmoTheoretical: number;  // DPMO teórico según el nivel sigma
   dpmo: number;             // DPMO empírico observado en la simulación
-  // Capacidad completa
-  cp: number;           // Índice de capacidad potencial (solo dispersión)
-  cpm: number;          // Índice de Taguchi (penaliza desviación del objetivo)
+  // Capacidad completa — índices corto plazo (usan σ simulada)
+  cp: number;           // Capacidad potencial (solo dispersión)
+  cpm: number;          // Taguchi: penaliza desviación del objetivo
+  // Performance — índices largo plazo (usan σ real observada, sin asumir control)
+  pp: number;           // Process Performance potencial
+  ppk: number;          // Process Performance real (lo que el proceso hace en la práctica)
+  ppu: number;          // Unilateral superior (solo LSC)
+  cpk_vs_ppk_ratio: number; // Ratio Cpk/Ppk: > 1 = causas especiales presentes
   // Prueba de hipótesis
   tStat: number;
   pValue: number;
@@ -755,12 +760,24 @@ const MonteCarloSimulator: React.FC = () => {
 
       // Capacidad — suite completa
       const denomStd = effStd > 0 ? effStd : 1e-9;
+      // ── Índices de CAPACIDAD — corto plazo, usan σ simulada (effStd) ────────
+      // Suponen proceso en control estadístico. Representan el POTENCIAL del proceso.
+      // Referencia: AIAG SPC Manual 2nd ed.; Montgomery, Introduction to SPC 7th ed.
       const cpk = (target - simMean) / (3 * denomStd);
-      // Cp: capacidad potencial (solo dispersión, ignora centrado)
       const cp  = target / (6 * denomStd);
-      // Cpm (Taguchi): penaliza también la desviación del objetivo
       const tau = Math.sqrt(simVar + Math.pow(simMean - target, 2));
       const cpm = target / (6 * Math.max(tau, 1e-9));
+
+      // ── Índices de PERFORMANCE — largo plazo, usan σ REAL observada (base.std) ─
+      // NO asumen control estadístico. Representan lo que el proceso REALMENTE hace.
+      // Siempre Ppk ≤ Cpk. Si Ppk << Cpk → causas especiales sin controlar.
+      // Referencia: AIAG SPC Manual §1.1.7; Montgomery, op. cit. cap. 7.
+      const σ_real = base.std > 0 ? base.std : 1e-9;
+      const μ_real = base.mean;
+      const ppu  = (target - μ_real) / (3 * σ_real);   // unilateral superior
+      const ppk  = ppu;                                  // solo LSC → Ppk = Ppu
+      const pp   = target / (6 * σ_real);               // potencial largo plazo
+      const cpk_vs_ppk_ratio = ppk > 0 ? cpk / ppk : 1; // >1.1 = causas especiales
       // Z corto plazo del proceso (capacidad unilateral hacia el objetivo)
       const sigmaLevel = (target - simMean) / denomStd;
       // Nivel Six Sigma con el corrimiento estándar de 1.5σ, acotado a la escala 1–6
@@ -955,7 +972,7 @@ const MonteCarloSimulator: React.FC = () => {
         ciHigh,
         mode,
         modeProbPct,
-        cpk, cp, cpm,
+        cpk, cp, cpm, pp, ppk, ppu, cpk_vs_ppk_ratio,
         sigmaLevel, sigmaSix, dpmoTheoretical, dpmo,
         tStat, pValue, rejectH0,
         p5ci, p95ci,
@@ -1813,22 +1830,24 @@ const MonteCarloSimulator: React.FC = () => {
 
           {/* Fila de capacidad */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {/* Suite completa de capacidad: Cpk / Cp / Cpm */}
+            {/* Suite completa de capacidad: Cp/Cpk/Cpm + Pp/Ppk */}
             <div className="glass-card p-4">
               <div className="flex items-center gap-2 mb-2">
                 <Gauge className="w-4 h-4 text-accent" />
-                <span className="stat-label">Capacidad del proceso</span>
+                <span className="stat-label">Índices de capacidad y performance</span>
               </div>
+              {/* Corto plazo */}
+              <p className="text-[9px] uppercase tracking-widest text-muted-foreground mb-1">Corto plazo (σ simulada)</p>
               {[
-                { label: "Cpk", value: simResults.cpk, desc: "Real (centrado + dispersión)", goal: 1.33 },
-                { label: "Cp",  value: simResults.cp,  desc: "Potencial (solo dispersión)",  goal: 1.33 },
-                { label: "Cpm", value: simResults.cpm, desc: "Taguchi (penaliza desv. objetivo)", goal: 1.0 },
+                { label: "Cpk", value: simResults.cpk, desc: "Capacidad real: centrado + dispersión. El más importante.", goal: 1.33 },
+                { label: "Cp",  value: simResults.cp,  desc: "Capacidad potencial: solo dispersión, ignora centrado.", goal: 1.33 },
+                { label: "Cpm", value: simResults.cpm, desc: "Taguchi: penaliza desviación del objetivo. Más exigente.", goal: 1.0 },
               ].map(({ label, value, desc, goal }) => (
                 <div key={label} className="mb-2">
                   <div className="flex justify-between items-baseline">
                     <span className="text-[11px] font-mono font-bold text-foreground">{label}</span>
-                    <span className={`font-display font-bold text-lg ${value >= goal ? "text-success" : value >= goal*0.75 ? "text-warning" : "text-destructive"}`}>
-                      {value.toFixed(2)}
+                    <span className={`font-display font-bold text-base ${value >= goal ? "text-success" : value >= goal*0.75 ? "text-warning" : "text-destructive"}`}>
+                      {value.toFixed(3)}
                     </span>
                   </div>
                   <div className="h-1 rounded-full bg-muted/20 overflow-hidden mb-0.5">
@@ -1837,6 +1856,38 @@ const MonteCarloSimulator: React.FC = () => {
                   <p className="text-[9px] text-muted-foreground">{desc} · meta ≥ {goal}</p>
                 </div>
               ))}
+              {/* Largo plazo */}
+              <p className="text-[9px] uppercase tracking-widest text-muted-foreground mb-1 mt-2 border-t border-border/30 pt-1.5">Largo plazo (σ real observada)</p>
+              {[
+                { label: "Ppk", value: simResults.ppk, desc: "Performance real: lo que el proceso hace en la práctica.", goal: 1.33 },
+                { label: "Pp",  value: simResults.pp,  desc: "Performance potencial: dispersión real observada.", goal: 1.33 },
+              ].map(({ label, value, desc, goal }) => (
+                <div key={label} className="mb-2">
+                  <div className="flex justify-between items-baseline">
+                    <span className="text-[11px] font-mono font-bold text-foreground">{label}</span>
+                    <span className={`font-display font-bold text-base ${value >= goal ? "text-success" : value >= goal*0.75 ? "text-warning" : "text-destructive"}`}>
+                      {value.toFixed(3)}
+                    </span>
+                  </div>
+                  <div className="h-1 rounded-full bg-muted/20 overflow-hidden mb-0.5">
+                    <div className="h-full rounded-full" style={{ width: `${Math.min(100,(value/2)*100)}%`, background: value>=goal?"hsl(152,60%,50%)":value>=goal*0.75?"hsl(38,92%,55%)":"hsl(0,72%,60%)" }} />
+                  </div>
+                  <p className="text-[9px] text-muted-foreground">{desc} · meta ≥ {goal}</p>
+                </div>
+              ))}
+              {/* Diagnóstico Cpk vs Ppk */}
+              {(() => {
+                const r = simResults.cpk_vs_ppk_ratio;
+                const msg = r < 1.05 ? { text: "Cpk ≈ Ppk — proceso en control estadístico. Sin causas especiales detectadas.", col: "hsl(152,60%,50%)" }
+                  : r < 1.2  ? { text: `Cpk/Ppk = ${r.toFixed(2)} — leve presencia de causas especiales. Monitorear con carta de control.`, col: "hsl(38,92%,55%)" }
+                  : { text: `Cpk/Ppk = ${r.toFixed(2)} — causas especiales significativas. El proceso tiene más variación de la que el modelo corto plazo captura. Prioridad: carta X̄-R.`, col: "hsl(0,72%,60%)" };
+                return (
+                  <div className="mt-1.5 rounded px-2 py-1.5 text-[9px] leading-snug border"
+                    style={{ borderColor: msg.col + "44", background: msg.col + "0d", color: msg.col }}>
+                    {msg.text}
+                  </div>
+                );
+              })()}
             </div>
             {/* Media + IC95 */}
             <div className="glass-card p-4">
@@ -2557,6 +2608,196 @@ const MonteCarloSimulator: React.FC = () => {
               <div className="stat-label">pérdida mensual estimada</div>
             </div>
           </div>
+
+          {/* ════════════════════════════════════════════════════════════════
+              RECOMENDACIÓN EJECUTIVA FINAL — síntesis de todos los índices
+              ════════════════════════════════════════════════════════════════ */}
+          {(() => {
+            const r = simResults;
+            const μ = base.mean; const σ = base.std;
+
+            // ── Motor de diagnóstico ──────────────────────────────────────
+            interface Accion {
+              prioridad: 1|2|3;
+              tipo: "critica"|"mejora"|"monitoreo";
+              titulo: string;
+              que: string;
+              como: string;
+              impacto: string;
+              fuente: string;
+            }
+
+            const acciones: Accion[] = [];
+
+            // 1. Proceso no cumple el objetivo
+            if (r.probMeetTarget < 0.80) {
+              acciones.push({
+                prioridad: 1, tipo: "critica",
+                titulo: `Solo ${(r.probMeetTarget*100).toFixed(1)}% de ciclos cumplen el objetivo`,
+                que: `El proceso supera el objetivo ${((1-r.probMeetTarget)*100).toFixed(1)}% de las veces — ${r.dpmo.toLocaleString()} DPMO.`,
+                como: `1) Rediseña el método eliminando therbligs ineficientes (Búsqueda, Retención, Demora evitable). 2) Aplica DMAIC para identificar la causa raíz. 3) Considera si el objetivo actual es realista: OIT/ILO recomienda target ≥ μ + 1.645σ = ${(μ+1.645*σ).toFixed(1)}s.`,
+                impacto: `Reducir el DPMO a <6.210 (Cpk≥1.33) ahorraría ${formatMoney(Math.abs(r.costLost))} mensuales en retrabajo y sobretiempo.`,
+                fuente: "OIT (1992) · AIAG SPC 2nd ed. · Montgomery, SPC 7th ed.",
+              });
+            }
+
+            // 2. Cpk bajo
+            if (r.cpk < 1.0) {
+              acciones.push({
+                prioridad: 1, tipo: "critica",
+                titulo: `Cpk = ${r.cpk.toFixed(3)} — proceso NO capaz (meta ≥ 1.33)`,
+                que: `Con Cpk < 1.00 el proceso genera defectos sistemáticamente. La σ simulada (${r.effStd.toFixed(1)}s) es demasiado alta para el objetivo de ${r.target.toFixed(0)}s.`,
+                como: `Para Cpk≥1.33: σ debe bajar de ${r.effStd.toFixed(1)}s a ≤ ${((r.target-r.mean)/4).toFixed(1)}s (reducción del ${Math.max(0,Math.round((1-(r.target-r.mean)/(4*r.effStd))*100))}%). Herramientas: estandarización de método, poka-yoke, cartas de control X̄-R.`,
+                impacto: `Cada punto de Cpk por encima de 1.00 reduce el DPMO exponencialmente. Cpk 1.33 = 64 DPMO vs. actual ${r.dpmo.toLocaleString()} DPMO.`,
+                fuente: "Harry & Schroeder, Six Sigma (2000) · AIAG SPC Manual §1.1.4.",
+              });
+            } else if (r.cpk < 1.33) {
+              acciones.push({
+                prioridad: 2, tipo: "mejora",
+                titulo: `Cpk = ${r.cpk.toFixed(3)} — proceso aceptable, pero no capaz`,
+                que: `Cpk entre 1.00 y 1.33 cumple ISO 9001 mínimo pero no AIAG/IATF 16949. Hay margen de mejora.`,
+                como: `Reducir σ un ${Math.max(0,Math.round((1-(r.target-r.mean)/(4*r.effStd))*100))}% adicional llevaría a Cpk≥1.33. Aplicar DMAIC fase Improve: balanceo de línea y reducción de causas comunes.`,
+                impacto: `Cpk 1.33 = 64 DPMO (clase automotriz). Actual: ${r.dpmo.toLocaleString()} DPMO.`,
+                fuente: "ISO 9001:2015 §8.5 · IATF 16949:2016 · AIAG SPC 2nd ed.",
+              });
+            }
+
+            // 3. Causas especiales (Cpk/Ppk ratio)
+            if (r.cpk_vs_ppk_ratio > 1.2) {
+              acciones.push({
+                prioridad: 1, tipo: "critica",
+                titulo: `Cpk/Ppk = ${r.cpk_vs_ppk_ratio.toFixed(2)} — causas especiales detectadas`,
+                que: `El ratio Cpk/Ppk > 1.2 indica variación no aleatoria en el proceso: hay factores externos que lo desestabilizan (operario diferente, turno, lote de material).`,
+                como: `1) Implementar carta de control X̄-R para separar variación aleatoria de especial. 2) Estratificar los datos por operario, turno y lote. 3) Eliminar causas especiales ANTES de intentar reducir variabilidad (de lo contrario, el efecto será nulo).`,
+                impacto: `Eliminar causas especiales puede reducir la σ real un 20-40% sin cambiar el método — el mayor retorno de inversión posible (Montgomery, SPC cap. 5).`,
+                fuente: "Montgomery, Introduction to SPC 7th ed. cap. 5 · Wheeler, Understanding Statistical Process Control.",
+              });
+            }
+
+            // 4. CV alto
+            const cv = μ > 0 ? σ/μ : 0;
+            if (cv > 0.25) {
+              acciones.push({
+                prioridad: 2, tipo: "mejora",
+                titulo: `CV = ${(cv*100).toFixed(1)}% — variabilidad inaceptable para trabajo en planta`,
+                que: `El CV supera el 25%, umbral de inestabilidad para trabajo manual (Barnes, 1980). La distribución tiene cola larga — hay ciclos muy lentos que distorsionan la media.`,
+                como: `Analizar el 10% de ciclos más lentos (por encima de P90 = ${r.p90.toFixed(1)}s). Identificar si son un operario específico, fatiga, o material defectuoso. Separar y resolver cada causa.`,
+                impacto: `Reducir el CV de ${(cv*100).toFixed(1)}% a <20% mejoraría el Cpk en ~${Math.round((cv-0.20)/cv*100)}% sin cambiar la media.`,
+                fuente: "Barnes, R.M. Motion and Time Study, 8th ed. (1980), tabla 7.1 · Niebel & Freivalds cap. 14.",
+              });
+            }
+
+            // 5. Hipótesis no rechazada (media fuera del objetivo)
+            if (!r.rejectH0) {
+              acciones.push({
+                prioridad: 2, tipo: "mejora",
+                titulo: `Prueba t: p = ${r.pValue < 0.001 ? "<0.001" : r.pValue.toFixed(3)} — la media NO cumple el objetivo estadísticamente`,
+                que: `Con α = 5%, no hay evidencia suficiente de que la media del proceso sea menor que el objetivo de ${r.target.toFixed(0)}s. La media simulada (${r.mean.toFixed(1)}s) está demasiado cerca o por encima del objetivo.`,
+                como: `Para rechazar H₀ con 95% de confianza, la media debe bajar a ≤ ${(r.target - 1.645 * r.std/Math.sqrt(Math.max(1, base.times.length))).toFixed(1)}s. Acciones: mejora de método (MOST/MTM) o rediseño de puesto.`,
+                impacto: `Sin media significativamente bajo el objetivo, cualquier pico de variabilidad generará incumplimientos.`,
+                fuente: "Montgomery & Runger, Applied Statistics and Probability for Engineers, 7th ed. §9.2.",
+              });
+            }
+
+            // 6. Sobol: el factor más influyente
+            const topSobol = r.sobol[0];
+            if (topSobol && topSobol.si_pct > 35) {
+              acciones.push({
+                prioridad: 2, tipo: "mejora",
+                titulo: `"${topSobol.name}" explica el ${topSobol.si_pct.toFixed(1)}% de la varianza de utilidad`,
+                que: `El índice de Sobol S₁ = ${topSobol.si.toFixed(3)} indica que este factor es el palanca dominante de la rentabilidad. Los demás factores juntos tienen menos impacto.`,
+                como: `Concentrar los recursos de mejora en "${topSobol.name}". Las intervenciones en otros factores tienen rendimientos decrecientes hasta que este sea controlado.`,
+                impacto: `Reducir la incertidumbre de "${topSobol.name}" en un 50% reduciría la varianza de utilidad en ~${(topSobol.si_pct*0.5).toFixed(0)}%.`,
+                fuente: "Saltelli et al., Journal of Computational Physics 259 (2014) · Sobol', Mathematics and Computers in Simulation (1993).",
+              });
+            }
+
+            // 7. Proceso en buen estado
+            if (r.cpk >= 1.33 && r.probMeetTarget >= 0.95 && r.cpk_vs_ppk_ratio < 1.1) {
+              acciones.push({
+                prioridad: 3, tipo: "monitoreo",
+                titulo: `Proceso capaz y bajo control — mantener y monitorear`,
+                que: `Cpk = ${r.cpk.toFixed(3)} ≥ 1.33, P(cumple) = ${(r.probMeetTarget*100).toFixed(1)}%, Cpk/Ppk = ${r.cpk_vs_ppk_ratio.toFixed(2)} ≈ 1.`,
+                como: `1) Implementar carta de control X̄-R con límites al nivel actual para detectar deterioro temprano. 2) Auditar el método estandardizado cada 3 meses. 3) Documentar mejores prácticas para replicar en otros puestos.`,
+                impacto: `Un proceso Cpk≥1.33 bien mantenido es la base para escalar producción sin pérdida de calidad.`,
+                fuente: "Montgomery, SPC 7th ed. cap. 5 · ISO 9001:2015 §9.1 (Seguimiento y medición).",
+              });
+            }
+
+            const colTipo = { critica: "hsl(0,72%,60%)", mejora: "hsl(38,92%,55%)", monitoreo: "hsl(152,60%,50%)" };
+            const bgTipo  = { critica: "hsl(0,72%,60%,0.06)", mejora: "hsl(38,92%,55%,0.06)", monitoreo: "hsl(152,60%,50%,0.06)" };
+            const iconTipo = { critica: "🔴", mejora: "🟡", monitoreo: "🟢" };
+
+            return (
+              <div className="glass-card p-5 border-primary/20 mt-2">
+                <div className="flex items-center gap-3 mb-5">
+                  <div className="w-9 h-9 rounded-xl flex items-center justify-center bg-primary/10 border border-primary/20">
+                    <Crosshair className="w-5 h-5 text-primary" />
+                  </div>
+                  <div>
+                    <h3 className="font-display font-bold text-foreground">Recomendación ejecutiva final</h3>
+                    <p className="text-[11px] text-muted-foreground">
+                      Síntesis de {acciones.length} diagnósticos · calculada desde {base.times.length} ciclos reales
+                      · Cpk {r.cpk.toFixed(2)} · Ppk {r.ppk.toFixed(2)} · {r.dpmo.toLocaleString()} DPMO · σ={r.std.toFixed(1)}s
+                    </p>
+                  </div>
+                </div>
+
+                {/* Semáforo resumen */}
+                <div className="grid grid-cols-3 gap-3 mb-5">
+                  {[
+                    { label: "Críticas", count: acciones.filter(a=>a.tipo==="critica").length, col: colTipo.critica, icon: "🔴" },
+                    { label: "Mejoras", count: acciones.filter(a=>a.tipo==="mejora").length, col: colTipo.mejora, icon: "🟡" },
+                    { label: "Monitoreo", count: acciones.filter(a=>a.tipo==="monitoreo").length, col: colTipo.monitoreo, icon: "🟢" },
+                  ].map(s => (
+                    <div key={s.label} className="rounded-lg p-3 text-center border"
+                      style={{ borderColor: s.col+"44", background: s.col+"0d" }}>
+                      <div className="text-2xl font-bold" style={{ color: s.col }}>{s.count}</div>
+                      <div className="text-[10px] text-muted-foreground">{s.icon} {s.label}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Acciones ordenadas por prioridad */}
+                <div className="space-y-3">
+                  {acciones.sort((a,b) => a.prioridad - b.prioridad).map((ac, i) => (
+                    <div key={i} className="rounded-lg border p-4 space-y-2"
+                      style={{ borderColor: colTipo[ac.tipo]+"44", background: colTipo[ac.tipo]+"07" }}>
+                      <div className="flex items-start gap-2">
+                        <span className="text-base mt-0.5">{iconTipo[ac.tipo]}</span>
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-xs font-bold" style={{ color: colTipo[ac.tipo] }}>
+                              Prioridad {ac.prioridad}
+                            </span>
+                            <span className="font-display font-bold text-sm text-foreground">{ac.titulo}</span>
+                          </div>
+                          <p className="text-[11px] text-muted-foreground mt-1 leading-snug">{ac.que}</p>
+                        </div>
+                      </div>
+                      <div className="grid md:grid-cols-2 gap-3 pl-6">
+                        <div>
+                          <p className="text-[10px] font-semibold text-foreground uppercase tracking-wide mb-0.5">¿Cómo?</p>
+                          <p className="text-[11px] text-muted-foreground leading-snug">{ac.como}</p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] font-semibold text-foreground uppercase tracking-wide mb-0.5">Impacto estimado</p>
+                          <p className="text-[11px] text-muted-foreground leading-snug">{ac.impacto}</p>
+                          <p className="text-[10px] opacity-50 italic mt-1">{ac.fuente}</p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <p className="text-[10px] text-muted-foreground mt-4 border-t border-border/30 pt-3">
+                  <b>Interpretación de índices:</b> Cpk/Ppk &lt; 1.00 = no capaz · 1.00–1.33 = marginal (ISO 9001 mínimo) ·
+                  ≥ 1.33 = capaz (AIAG) · ≥ 1.67 = Seis Sigma. La diferencia Cpk − Ppk mide el impacto de causas especiales.
+                  DPMO = defectos por millón de oportunidades según la simulación.
+                </p>
+              </div>
+            );
+          })()}
         </>
       )}
     </div>
