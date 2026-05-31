@@ -759,52 +759,68 @@ const MonteCarloSimulator: React.FC = () => {
   }, [cycles, base, simCount, dist, target, varReduction, meanShift, avgHourlyCost, costConfig, nWorkers]);
 
 
-  // ── LLM Interpreter — OpenRouter streaming ─────────────────────────────────
-  const [aiText, setAiText] = useState("");
-  const [aiLoading, setAiLoading] = useState(false);
-  const [aiError, setAiError] = useState<string | null>(null);
+  // ── IA Advisor — chat multi-turn con streaming ──────────────────────────────
+  type AiMsg = { role: "user" | "assistant"; content: string };
+  const [aiOpen, setAiOpen] = useState(false);
+  const [aiMessages, setAiMessages] = useState<AiMsg[]>([]);
+  const [aiInput, setAiInput] = useState("");
+  const [aiStreaming, setAiStreaming] = useState(false);
   const aiAbortRef = useRef<AbortController | null>(null);
+  const aiScrollRef = useRef<HTMLDivElement>(null);
+  const aiInputRef = useRef<HTMLInputElement>(null);
 
-  const interpretWithAI = useCallback(async () => {
-    if (!simResults) return;
+  // Limpiar chat cuando cambian los resultados
+  useEffect(() => { setAiMessages([]); }, [simResults]);
+
+  const scrollToBottom = useCallback(() => {
+    setTimeout(() => aiScrollRef.current?.scrollTo({ top: 9999, behavior: "smooth" }), 50);
+  }, []);
+
+  const simContext = useMemo(() => simResults ? {
+    cpk: simResults.cpk, ppk: simResults.ppk, sigmaSix: simResults.sigmaSix,
+    dpmo: simResults.dpmo, probMeetTarget: simResults.probMeetTarget,
+    mean: simResults.mean, std: simResults.std, target: simResults.target,
+    verdict: simResults.verdict, expected: simResults.expected,
+    var95: simResults.var95, cvar: simResults.cvar,
+    improvementMonthly: simResults.improvementMonthly,
+    sobol: simResults.sobol, tornado: simResults.tornado,
+  } : null, [simResults]);
+
+  const sendAiMessage = useCallback(async (userText?: string) => {
+    if (!simContext || aiStreaming) return;
     aiAbortRef.current?.abort();
     const ctrl = new AbortController();
     aiAbortRef.current = ctrl;
 
-    setAiText("");
-    setAiError(null);
-    setAiLoading(true);
+    const isFirst = aiMessages.length === 0 && !userText;
+    const newMessages: AiMsg[] = userText
+      ? [...aiMessages, { role: "user" as const, content: userText }]
+      : aiMessages;
+
+    if (userText) setAiMessages(newMessages);
+    setAiInput("");
+    setAiStreaming(true);
+
+    // Placeholder de la respuesta que se va llenando
+    setAiMessages(prev => [...(userText ? newMessages : prev), { role: "assistant", content: "" }]);
+    scrollToBottom();
 
     try {
-      const payload = {
-        cpk:               simResults.cpk,
-        ppk:               simResults.ppk,
-        sigmaSix:          simResults.sigmaSix,
-        dpmo:              simResults.dpmo,
-        probMeetTarget:    simResults.probMeetTarget,
-        mean:              simResults.mean,
-        std:               simResults.std,
-        target:            simResults.target,
-        verdict:           simResults.verdict,
-        expected:          simResults.expected,
-        var95:             simResults.var95,
-        cvar:              simResults.cvar,
-        improvementMonthly: simResults.improvementMonthly,
-        sobol:             simResults.sobol,
-        tornado:           simResults.tornado,
-      };
-
+      const apiHistory: AiMsg[] = isFirst ? [] : newMessages;
       const res = await fetch("/api/llm-interpret", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ ...simContext, messages: apiHistory }),
         signal: ctrl.signal,
       });
 
       if (!res.ok) {
-        const err = await res.text();
-        setAiError(`Error ${res.status}: ${err}`);
-        setAiLoading(false);
+        setAiMessages(prev => {
+          const copy = [...prev];
+          copy[copy.length - 1] = { role: "assistant", content: "⚠ No pude conectarme. Intenta de nuevo en unos segundos." };
+          return copy;
+        });
+        setAiStreaming(false);
         return;
       }
 
@@ -821,22 +837,43 @@ const MonteCarloSimulator: React.FC = () => {
         for (const line of lines) {
           if (!line.startsWith("data: ")) continue;
           const raw = line.slice(6).trim();
-          if (raw === "[DONE]") { setAiLoading(false); return; }
+          if (raw === "[DONE]") break;
           try {
-            const chunk = JSON.parse(raw);
-            const token = chunk?.choices?.[0]?.delta?.content ?? "";
-            if (token) setAiText(prev => prev + token);
-          } catch { /* chunk parcial, ignorar */ }
+            const token = JSON.parse(raw)?.choices?.[0]?.delta?.content ?? "";
+            if (token) {
+              setAiMessages(prev => {
+                const copy = [...prev];
+                copy[copy.length - 1] = {
+                  role: "assistant",
+                  content: copy[copy.length - 1].content + token,
+                };
+                return copy;
+              });
+              scrollToBottom();
+            }
+          } catch { /* chunk parcial */ }
         }
       }
     } catch (e: unknown) {
-      if ((e as Error)?.name !== "AbortError") {
-        setAiError("No se pudo conectar con el servidor. Verifica que OPENROUTER_API_KEY esté configurada en Vercel.");
+      if ((e as Error)?.name === "AbortError") {
+        setAiMessages(prev => {
+          const copy = [...prev];
+          if (copy[copy.length-1]?.content === "") copy.pop();
+          return copy;
+        });
       }
     } finally {
-      setAiLoading(false);
+      setAiStreaming(false);
+      aiInputRef.current?.focus();
     }
-  }, [simResults]);
+  }, [simContext, aiStreaming, aiMessages, scrollToBottom]);
+
+  const QUICK_CHIPS = [
+    "¿Qué hago esta semana?",
+    "¿Cuánto dinero se pierde al mes?",
+    "¿Cómo llego a proceso capaz?",
+    "¿Cuál es el mayor riesgo?",
+  ];
 
   // Preset que cubre el N recomendado
   const coveringPreset = (rec: number) =>
@@ -1768,6 +1805,166 @@ const MonteCarloSimulator: React.FC = () => {
               </div>
               <div className="stat-label">DPMO</div>
             </div>
+          </div>
+
+          {/* ── IA Advisor Chat ────────────────────────────────────────────── */}
+          <div
+            className="rounded-2xl border overflow-hidden transition-all duration-300"
+            style={{
+              borderColor: aiOpen ? "hsla(265,80%,62%,0.4)" : "hsla(215,22%,28%,0.35)",
+              background: aiOpen ? "hsla(265,80%,10%,0.6)" : "hsla(215,22%,10%,0.4)",
+            }}
+          >
+            {/* Toggle header */}
+            <button
+              className="w-full flex items-center gap-3 px-4 py-3 transition-colors hover:bg-white/5"
+              onClick={() => {
+                setAiOpen(o => !o);
+                if (!aiOpen && aiMessages.length === 0) {
+                  setTimeout(() => sendAiMessage(), 150);
+                }
+              }}
+            >
+              <div
+                className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 border"
+                style={{
+                  background: "hsla(265,80%,62%,0.15)",
+                  borderColor: "hsla(265,80%,62%,0.35)",
+                }}
+              >
+                <Sparkles className="w-4 h-4" style={{ color: "hsl(265,80%,72%)" }} />
+              </div>
+              <div className="flex-1 text-left">
+                <span className="text-sm font-semibold text-foreground">Asesor IA</span>
+                <span className="text-[10px] text-muted-foreground ml-2">
+                  {aiMessages.length === 0 ? "Pregunta sobre tu proceso" :
+                   aiStreaming ? "Escribiendo…" :
+                   `${aiMessages.length} mensaje${aiMessages.length > 1 ? "s" : ""}`}
+                </span>
+              </div>
+              {aiMessages.length > 0 && (
+                <span
+                  className="text-[10px] px-2 py-0.5 rounded-full border mr-2"
+                  style={{ borderColor: "hsla(265,80%,62%,0.3)", color: "hsl(265,80%,70%)" }}
+                >
+                  activo
+                </span>
+              )}
+              <span className="text-muted-foreground text-xs">{aiOpen ? "▲" : "▼"}</span>
+            </button>
+
+            {/* Chat body */}
+            {aiOpen && (
+              <div className="border-t" style={{ borderColor: "hsla(265,80%,62%,0.15)" }}>
+                {/* Messages */}
+                <div
+                  ref={aiScrollRef}
+                  className="px-4 py-3 space-y-3 overflow-y-auto"
+                  style={{ maxHeight: "340px" }}
+                >
+                  {aiMessages.length === 0 && aiStreaming && (
+                    <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                      <div className="flex gap-1">
+                        {[0,1,2].map(i => (
+                          <div key={i} className="w-1.5 h-1.5 rounded-full bg-purple-400"
+                            style={{ animation: `pulse 1s ease-in-out ${i*0.2}s infinite` }} />
+                        ))}
+                      </div>
+                      Analizando tu proceso…
+                    </div>
+                  )}
+
+                  {aiMessages.map((msg, i) => (
+                    <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
+                      <div
+                        className="rounded-2xl px-3 py-2 text-sm leading-relaxed max-w-[85%] whitespace-pre-wrap"
+                        style={{
+                          background: msg.role === "user"
+                            ? "hsla(265,80%,62%,0.2)"
+                            : "hsla(215,22%,16%,0.8)",
+                          borderRadius: msg.role === "user"
+                            ? "18px 18px 4px 18px"
+                            : "18px 18px 18px 4px",
+                          color: "hsl(210,20%,90%)",
+                        }}
+                      >
+                        {msg.content}
+                        {aiStreaming && i === aiMessages.length - 1 && msg.role === "assistant" && (
+                          <span
+                            className="inline-block w-0.5 h-3.5 ml-0.5 align-middle rounded-full bg-purple-400"
+                            style={{ animation: "pulse 0.7s ease-in-out infinite" }}
+                          />
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Quick chips — solo si no hay conversación aún */}
+                {aiMessages.length <= 1 && !aiStreaming && (
+                  <div className="px-4 pb-2 flex flex-wrap gap-1.5">
+                    {QUICK_CHIPS.map(chip => (
+                      <button
+                        key={chip}
+                        onClick={() => sendAiMessage(chip)}
+                        className="text-[10px] px-2.5 py-1 rounded-full border transition-colors hover:bg-white/10"
+                        style={{
+                          borderColor: "hsla(265,80%,62%,0.3)",
+                          color: "hsl(265,80%,72%)",
+                        }}
+                      >
+                        {chip}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {/* Input */}
+                <div
+                  className="flex items-center gap-2 px-3 pb-3 pt-1"
+                >
+                  <input
+                    ref={aiInputRef}
+                    value={aiInput}
+                    onChange={e => setAiInput(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === "Enter" && !e.shiftKey && aiInput.trim()) {
+                        e.preventDefault();
+                        sendAiMessage(aiInput.trim());
+                      }
+                    }}
+                    placeholder="Pregunta algo sobre el proceso…"
+                    className="flex-1 text-xs rounded-xl px-3 py-2 outline-none border bg-transparent transition-colors"
+                    style={{
+                      borderColor: "hsla(265,80%,62%,0.25)",
+                      color: "hsl(210,20%,90%)",
+                    }}
+                    disabled={aiStreaming}
+                  />
+                  {aiStreaming ? (
+                    <button
+                      onClick={() => { aiAbortRef.current?.abort(); setAiStreaming(false); }}
+                      className="p-2 rounded-xl border border-destructive/30 text-destructive hover:bg-destructive/10 transition-colors flex-shrink-0"
+                    >
+                      <StopCircle className="w-4 h-4" />
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => aiInput.trim() && sendAiMessage(aiInput.trim())}
+                      disabled={!aiInput.trim()}
+                      className="p-2 rounded-xl border transition-colors flex-shrink-0 disabled:opacity-40"
+                      style={{
+                        background: "hsla(265,80%,62%,0.2)",
+                        borderColor: "hsla(265,80%,62%,0.35)",
+                        color: "hsl(265,80%,72%)",
+                      }}
+                    >
+                      <Zap className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Fila de capacidad */}
@@ -2904,145 +3101,7 @@ const MonteCarloSimulator: React.FC = () => {
               </div>
             );
           })()}
-          {/* ── Intérprete IA — OpenRouter / Llama 3.3 70B ───────────────── */}
-          <div
-            className="glass-card p-5 border"
-            style={{
-              borderColor: aiText || aiLoading
-                ? "hsla(265,80%,62%,0.35)"
-                : "hsla(215,22%,28%,0.3)",
-              background: aiText || aiLoading
-                ? "hsla(265,80%,62%,0.04)"
-                : "transparent",
-              transition: "border-color 0.4s, background 0.4s",
-            }}
-          >
-            {/* Header */}
-            <div className="flex items-center gap-3 flex-wrap">
-              <div
-                className="w-9 h-9 rounded-xl flex items-center justify-center border flex-shrink-0"
-                style={{
-                  background: "hsla(265,80%,62%,0.12)",
-                  borderColor: "hsla(265,80%,62%,0.3)",
-                }}
-              >
-                <Sparkles className="w-5 h-5" style={{ color: "hsl(265,80%,72%)" }} />
-              </div>
-              <div className="flex-1 min-w-0">
-                <h4 className="text-sm font-display font-bold text-foreground">
-                  Análisis con Inteligencia Artificial
-                </h4>
-                <p className="text-[10px] text-muted-foreground">
-                  Llama 3.3 70B vía OpenRouter · interpreta tus resultados en lenguaje de planta
-                </p>
-              </div>
-
-              <div className="flex items-center gap-2 flex-shrink-0">
-                {aiLoading && (
-                  <button
-                    onClick={() => { aiAbortRef.current?.abort(); setAiLoading(false); }}
-                    className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-destructive/30 text-destructive hover:bg-destructive/10 transition-colors"
-                  >
-                    <StopCircle className="w-3.5 h-3.5" />
-                    Detener
-                  </button>
-                )}
-                <button
-                  onClick={interpretWithAI}
-                  disabled={aiLoading}
-                  className="flex items-center gap-2 text-xs px-4 py-2 rounded-lg border font-semibold transition-all duration-200 disabled:opacity-60"
-                  style={{
-                    background: aiLoading ? "transparent" : "hsla(265,80%,62%,0.15)",
-                    borderColor: "hsla(265,80%,62%,0.4)",
-                    color: "hsl(265,80%,75%)",
-                  }}
-                >
-                  <Sparkles className="w-3.5 h-3.5" />
-                  {aiLoading ? "Generando…" : aiText ? "Regenerar" : "Interpretar con IA"}
-                </button>
-              </div>
-            </div>
-
-            {/* Loading animation */}
-            {aiLoading && !aiText && (
-              <div className="mt-4 flex items-center gap-3 text-sm text-muted-foreground">
-                <div className="flex gap-1">
-                  {[0, 1, 2].map(i => (
-                    <div
-                      key={i}
-                      className="w-2 h-2 rounded-full"
-                      style={{
-                        background: "hsl(265,80%,65%)",
-                        animation: `pulse 1.2s ease-in-out ${i * 0.2}s infinite`,
-                        opacity: 0.7,
-                      }}
-                    />
-                  ))}
-                </div>
-                Analizando {simResults!.scenarios.length.toLocaleString()} escenarios con IA…
-              </div>
-            )}
-
-            {/* Error */}
-            {aiError && (
-              <div className="mt-4 rounded-lg border border-destructive/30 bg-destructive/5 p-3">
-                <p className="text-xs text-destructive leading-snug">{aiError}</p>
-                <p className="text-[10px] text-muted-foreground mt-1">
-                  Asegúrate de que <code className="text-accent">OPENROUTER_API_KEY</code> esté configurada en las Variables de Entorno de Vercel.
-                </p>
-              </div>
-            )}
-
-            {/* Streaming text */}
-            {aiText && (
-              <div className="mt-4 space-y-3">
-                <div
-                  className="rounded-xl p-4 border text-sm text-foreground leading-relaxed whitespace-pre-wrap"
-                  style={{
-                    borderColor: "hsla(265,80%,62%,0.2)",
-                    background: "hsla(265,80%,62%,0.04)",
-                    fontFamily: "'Inter', sans-serif",
-                  }}
-                >
-                  {aiText}
-                  {aiLoading && (
-                    <span
-                      className="inline-block w-0.5 h-4 ml-0.5 align-middle rounded-full"
-                      style={{
-                        background: "hsl(265,80%,65%)",
-                        animation: "pulse 0.8s ease-in-out infinite",
-                      }}
-                    />
-                  )}
-                </div>
-                <div className="flex items-center justify-between flex-wrap gap-2">
-                  <p className="text-[10px] text-muted-foreground/60">
-                    Generado por <b>Llama 3.3 70B</b> vía OpenRouter ·
-                    Verificar conclusiones con un experto en ingeniería industrial.
-                  </p>
-                  <span
-                    className="text-[10px] px-2 py-0.5 rounded-full border"
-                    style={{
-                      borderColor: "hsla(265,80%,62%,0.25)",
-                      color: "hsl(265,80%,65%)",
-                      background: "hsla(265,80%,62%,0.08)",
-                    }}
-                  >
-                    IA generativa · {aiText.split(" ").length} palabras
-                  </span>
-                </div>
-              </div>
-            )}
-
-            {/* Prompt to run */}
-            {!aiText && !aiLoading && !aiError && (
-              <p className="mt-3 text-[11px] text-muted-foreground">
-                Corre la simulación y luego presiona <b className="text-foreground">Interpretar con IA</b> para
-                obtener un análisis ejecutivo en lenguaje de planta: estado del proceso, riesgo principal y
-                acción prioritaria de la semana.
-              </p>
-            )}
-          </div>
+          {/* ── IA Advisor — chat integrado ───────────────────────────────── */}
         </>
       )}
     </div>

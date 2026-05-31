@@ -1,19 +1,18 @@
-// Vercel Edge Function — OpenRouter proxy con streaming SSE
+// Vercel Edge Function — OpenRouter proxy con streaming SSE + chat multi-turn
 // Mantiene la API key server-side: nunca expuesta al cliente.
 export const config = { runtime: "edge" };
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
-// Cadena de modelos gratuitos verificados en OpenRouter (2025-05-30)
-// Si el primero está rate-limited (429), prueba el siguiente automáticamente
+// Cadena de modelos gratuitos verificados — fallback automático si 429
 const MODELS = [
-  "meta-llama/llama-3.3-70b-instruct:free",  // Llama — calidad alta
-  "openai/gpt-oss-120b:free",                 // GPT OSS 120B — verificado disponible
-  "nvidia/nemotron-3-super-120b-a12b:free",   // Nvidia Nemotron 120B
-  "deepseek/deepseek-v4-flash:free",          // DeepSeek Flash
-  "google/gemma-4-31b-it:free",               // Gemma 4 31B
+  "meta-llama/llama-3.3-70b-instruct:free",
+  "openai/gpt-oss-120b:free",
+  "nvidia/nemotron-3-super-120b-a12b:free",
+  "deepseek/deepseek-v4-flash:free",
+  "google/gemma-4-31b-it:free",
 ];
 
-function buildPrompt(data: Record<string, unknown>): string {
+function buildSystemPrompt(data: Record<string, unknown>): string {
   const {
     cpk, ppk, sigmaSix, dpmo, probMeetTarget,
     mean, std, target, verdict,
@@ -24,44 +23,35 @@ function buildPrompt(data: Record<string, unknown>): string {
     mean: number; std: number; target: number; verdict: string;
     expected: number; var95: number; cvar: number; improvementMonthly: number;
     sobol: { name: string; si_pct: number }[];
-    tornado: { name: string; range: number; low: number; high: number }[];
+    tornado: { name: string; range: number }[];
   };
 
   const verdictLabel =
-    verdict === "capaz" ? "CAPAZ (Cpk ≥ 1.33)" :
-    verdict === "aceptable" ? "ACEPTABLE (Cpk entre 1.00 y 1.33)" :
-    "NO CAPAZ (Cpk < 1.00) — riesgo alto";
+    verdict === "capaz" ? "CAPAZ" :
+    verdict === "aceptable" ? "ACEPTABLE con margen de mejora" :
+    "NO CAPAZ — riesgo alto";
 
-  const top = sobol?.[0];
-  const topTornado = tornado?.[0];
+  const col = (n: number) => n.toLocaleString("es-CO");
 
-  return `Eres experto en ingeniería industrial y análisis estadístico de procesos de manufactura manual (estudio de tiempos, Six Sigma, Lean). Analiza estos resultados de simulación Monte Carlo y entrega un análisis ejecutivo en español, claro y accionable. Máximo 280 palabras.
+  return `Eres el asesor de IA de KRONOS.AI, experto en ingeniería industrial y procesos de manufactura manual.
 
-=== DATOS DE SIMULACIÓN ===
-Proceso: manufactura manual (grullas de papel)
-Veredicto: ${verdictLabel}
+DATOS DEL PROCESO ANALIZADO:
+• Veredicto: ${verdictLabel} | Cpk=${(+cpk).toFixed(2)} | Ppk=${(+ppk).toFixed(2)} | ${(+sigmaSix).toFixed(1)}σ
+• Ciclos fallando: ${col(+dpmo)} DPMO (de cada millón, ${col(+dpmo)} superan el objetivo)
+• Cumplimiento: ${((+probMeetTarget)*100).toFixed(1)}% | μ=${(+mean).toFixed(0)}s | σ=${(+std).toFixed(0)}s | Objetivo=${(+target).toFixed(0)}s
+• Utilidad esperada: $${col(+expected)}/mes | Riesgo VaR: $${col(+var95)} | CVaR: $${col(+cvar)}
+• Mejora potencial vs línea base: $${col(+improvementMonthly)}/mes
+• Factor que más afecta rentabilidad: ${sobol?.[0]?.name ?? "N/A"} (${sobol?.[0]?.si_pct?.toFixed(0) ?? "?"}% de la varianza)
+• Mayor palanca económica: ${tornado?.[0]?.name ?? "N/A"} (rango $${col(+(tornado?.[0]?.range ?? 0))})
 
-Índices de capacidad:
-• Cpk = ${(+cpk).toFixed(3)} | Ppk = ${(+ppk).toFixed(3)} | Six Sigma = ${(+sigmaSix).toFixed(2)}σ
-• DPMO = ${(+dpmo).toLocaleString("es-CO")} | Cumplimiento = ${((+probMeetTarget)*100).toFixed(1)}%
-• μ = ${(+mean).toFixed(1)}s | σ = ${(+std).toFixed(1)}s | Objetivo (LSC) = ${(+target).toFixed(0)}s
-
-Riesgo financiero mensual:
-• Utilidad esperada: $${(+expected).toLocaleString("es-CO")}
-• VaR 95%: $${(+var95).toLocaleString("es-CO")} de pérdida potencial
-• CVaR (peor 5%): $${(+cvar).toLocaleString("es-CO")}
-• Mejora vs línea base: $${(+improvementMonthly).toLocaleString("es-CO")}/mes
-
-Factor dominante (Sobol S₁): ${top?.name ?? "N/A"} → explica el ${top?.si_pct?.toFixed(1) ?? "?"}% de la varianza de utilidad
-Mayor palanca (Tornado): ${topTornado?.name ?? "N/A"} → rango de impacto $${(+(topTornado?.range ?? 0)).toLocaleString("es-CO")}
-
-=== INSTRUCCIÓN ===
-Escribe exactamente 3 párrafos:
-**Párrafo 1 — Estado del proceso:** Explica en lenguaje operativo qué significa el Cpk y el nivel sigma para el supervisor de planta. ¿Cuántos ciclos de cada 1.000 están fallando?
-**Párrafo 2 — Riesgo prioritario:** Identifica el mayor riesgo económico y su causa estadística (menciona el factor dominante del análisis de sensibilidad).
-**Párrafo 3 — Acción esta semana:** Una sola acción concreta, específica y medible que el supervisor puede ejecutar en los próximos 5 días hábiles para mover el Cpk hacia 1.33.
-
-No uses fórmulas matemáticas en los párrafos. Sé directo. Usa lenguaje de planta, no de academia.`;
+REGLAS ESTRICTAS:
+- Responde SIEMPRE en español
+- Máximo 4 oraciones por respuesta — sé conciso y directo
+- Lenguaje de planta, no académico — como si hablaras con el supervisor
+- Sin fórmulas, sin mencionar nombres de índices (di "capacidad del proceso" no "Cpk")
+- Sin disclaimers, sin mencionar que eres IA
+- Primera respuesta: usa 3 emojis de bullet (🔴🟡🟢) según severidad + 1 acción concreta
+- Respuestas siguientes: directo al punto, máximo 3 frases`;
 }
 
 export default async function handler(req: Request): Promise<Response> {
@@ -90,7 +80,7 @@ export default async function handler(req: Request): Promise<Response> {
     );
   }
 
-  let body: Record<string, unknown>;
+  let body: Record<string, unknown> & { messages?: { role: string; content: string }[] };
   try {
     body = await req.json();
   } catch {
@@ -100,7 +90,15 @@ export default async function handler(req: Request): Promise<Response> {
     });
   }
 
-  const prompt = buildPrompt(body);
+  const systemPrompt = buildSystemPrompt(body);
+  // Historial de conversación del cliente + mensaje inicial si es primera vez
+  const history = (body.messages ?? []) as { role: string; content: string }[];
+  const apiMessages = [
+    { role: "system", content: systemPrompt },
+    ...(history.length === 0
+      ? [{ role: "user", content: "Analiza el proceso y dame el diagnóstico." }]
+      : history),
+  ];
 
   // Intenta cada modelo en orden — si hay 429 (rate-limit) pasa al siguiente
   let lastError = "";
@@ -115,10 +113,10 @@ export default async function handler(req: Request): Promise<Response> {
       },
       body: JSON.stringify({
         model,
-        messages: [{ role: "user", content: prompt }],
+        messages: apiMessages,
         stream: true,
-        max_tokens: 450,
-        temperature: 0.35,
+        max_tokens: 300,
+        temperature: 0.3,
       }),
     });
 
