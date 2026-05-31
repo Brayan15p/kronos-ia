@@ -3,12 +3,14 @@
 export const config = { runtime: "edge" };
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
-// Cadena de modelos gratuitos — si el primero está rate-limited, prueba el siguiente
+// Cadena de modelos gratuitos verificados en OpenRouter (2025-05-30)
+// Si el primero está rate-limited (429), prueba el siguiente automáticamente
 const MODELS = [
-  "meta-llama/llama-3.3-70b-instruct:free",
-  "google/gemini-2.0-flash-exp:free",
-  "deepseek/deepseek-r1:free",
-  "mistralai/mistral-7b-instruct:free",
+  "meta-llama/llama-3.3-70b-instruct:free",  // Llama — calidad alta
+  "openai/gpt-oss-120b:free",                 // GPT OSS 120B — verificado disponible
+  "nvidia/nemotron-3-super-120b-a12b:free",   // Nvidia Nemotron 120B
+  "deepseek/deepseek-v4-flash:free",          // DeepSeek Flash
+  "google/gemma-4-31b-it:free",               // Gemma 4 31B
 ];
 
 function buildPrompt(data: Record<string, unknown>): string {
