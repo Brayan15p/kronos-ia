@@ -19,6 +19,8 @@ import {
   Zap,
   ArrowUpCircle,
   CalendarDays,
+  Sparkles,
+  StopCircle,
 } from "lucide-react";
 import { useTimeStudy } from "@/context/TimeStudyContext";
 import {
@@ -756,6 +758,85 @@ const MonteCarloSimulator: React.FC = () => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cycles, base, simCount, dist, target, varReduction, meanShift, avgHourlyCost, costConfig, nWorkers]);
 
+
+  // ── LLM Interpreter — OpenRouter streaming ─────────────────────────────────
+  const [aiText, setAiText] = useState("");
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
+  const aiAbortRef = useRef<AbortController | null>(null);
+
+  const interpretWithAI = useCallback(async () => {
+    if (!simResults) return;
+    aiAbortRef.current?.abort();
+    const ctrl = new AbortController();
+    aiAbortRef.current = ctrl;
+
+    setAiText("");
+    setAiError(null);
+    setAiLoading(true);
+
+    try {
+      const payload = {
+        cpk:               simResults.cpk,
+        ppk:               simResults.ppk,
+        sigmaSix:          simResults.sigmaSix,
+        dpmo:              simResults.dpmo,
+        probMeetTarget:    simResults.probMeetTarget,
+        mean:              simResults.mean,
+        std:               simResults.std,
+        target:            simResults.target,
+        verdict:           simResults.verdict,
+        expected:          simResults.expected,
+        var95:             simResults.var95,
+        cvar:              simResults.cvar,
+        improvementMonthly: simResults.improvementMonthly,
+        sobol:             simResults.sobol,
+        tornado:           simResults.tornado,
+      };
+
+      const res = await fetch("/api/llm-interpret", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+        signal: ctrl.signal,
+      });
+
+      if (!res.ok) {
+        const err = await res.text();
+        setAiError(`Error ${res.status}: ${err}`);
+        setAiLoading(false);
+        return;
+      }
+
+      const reader = res.body!.getReader();
+      const decoder = new TextDecoder();
+      let buf = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const lines = buf.split("\n");
+        buf = lines.pop() ?? "";
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          const raw = line.slice(6).trim();
+          if (raw === "[DONE]") { setAiLoading(false); return; }
+          try {
+            const chunk = JSON.parse(raw);
+            const token = chunk?.choices?.[0]?.delta?.content ?? "";
+            if (token) setAiText(prev => prev + token);
+          } catch { /* chunk parcial, ignorar */ }
+        }
+      }
+    } catch (e: unknown) {
+      if ((e as Error)?.name !== "AbortError") {
+        setAiError("No se pudo conectar con el servidor. Verifica que OPENROUTER_API_KEY esté configurada en Vercel.");
+      }
+    } finally {
+      setAiLoading(false);
+    }
+  }, [simResults]);
 
   // Preset que cubre el N recomendado
   const coveringPreset = (rec: number) =>
@@ -2823,6 +2904,145 @@ const MonteCarloSimulator: React.FC = () => {
               </div>
             );
           })()}
+          {/* ── Intérprete IA — OpenRouter / Llama 3.3 70B ───────────────── */}
+          <div
+            className="glass-card p-5 border"
+            style={{
+              borderColor: aiText || aiLoading
+                ? "hsla(265,80%,62%,0.35)"
+                : "hsla(215,22%,28%,0.3)",
+              background: aiText || aiLoading
+                ? "hsla(265,80%,62%,0.04)"
+                : "transparent",
+              transition: "border-color 0.4s, background 0.4s",
+            }}
+          >
+            {/* Header */}
+            <div className="flex items-center gap-3 flex-wrap">
+              <div
+                className="w-9 h-9 rounded-xl flex items-center justify-center border flex-shrink-0"
+                style={{
+                  background: "hsla(265,80%,62%,0.12)",
+                  borderColor: "hsla(265,80%,62%,0.3)",
+                }}
+              >
+                <Sparkles className="w-5 h-5" style={{ color: "hsl(265,80%,72%)" }} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h4 className="text-sm font-display font-bold text-foreground">
+                  Análisis con Inteligencia Artificial
+                </h4>
+                <p className="text-[10px] text-muted-foreground">
+                  Llama 3.3 70B vía OpenRouter · interpreta tus resultados en lenguaje de planta
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2 flex-shrink-0">
+                {aiLoading && (
+                  <button
+                    onClick={() => { aiAbortRef.current?.abort(); setAiLoading(false); }}
+                    className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-destructive/30 text-destructive hover:bg-destructive/10 transition-colors"
+                  >
+                    <StopCircle className="w-3.5 h-3.5" />
+                    Detener
+                  </button>
+                )}
+                <button
+                  onClick={interpretWithAI}
+                  disabled={aiLoading}
+                  className="flex items-center gap-2 text-xs px-4 py-2 rounded-lg border font-semibold transition-all duration-200 disabled:opacity-60"
+                  style={{
+                    background: aiLoading ? "transparent" : "hsla(265,80%,62%,0.15)",
+                    borderColor: "hsla(265,80%,62%,0.4)",
+                    color: "hsl(265,80%,75%)",
+                  }}
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  {aiLoading ? "Generando…" : aiText ? "Regenerar" : "Interpretar con IA"}
+                </button>
+              </div>
+            </div>
+
+            {/* Loading animation */}
+            {aiLoading && !aiText && (
+              <div className="mt-4 flex items-center gap-3 text-sm text-muted-foreground">
+                <div className="flex gap-1">
+                  {[0, 1, 2].map(i => (
+                    <div
+                      key={i}
+                      className="w-2 h-2 rounded-full"
+                      style={{
+                        background: "hsl(265,80%,65%)",
+                        animation: `pulse 1.2s ease-in-out ${i * 0.2}s infinite`,
+                        opacity: 0.7,
+                      }}
+                    />
+                  ))}
+                </div>
+                Analizando {simResults!.scenarios.length.toLocaleString()} escenarios con IA…
+              </div>
+            )}
+
+            {/* Error */}
+            {aiError && (
+              <div className="mt-4 rounded-lg border border-destructive/30 bg-destructive/5 p-3">
+                <p className="text-xs text-destructive leading-snug">{aiError}</p>
+                <p className="text-[10px] text-muted-foreground mt-1">
+                  Asegúrate de que <code className="text-accent">OPENROUTER_API_KEY</code> esté configurada en las Variables de Entorno de Vercel.
+                </p>
+              </div>
+            )}
+
+            {/* Streaming text */}
+            {aiText && (
+              <div className="mt-4 space-y-3">
+                <div
+                  className="rounded-xl p-4 border text-sm text-foreground leading-relaxed whitespace-pre-wrap"
+                  style={{
+                    borderColor: "hsla(265,80%,62%,0.2)",
+                    background: "hsla(265,80%,62%,0.04)",
+                    fontFamily: "'Inter', sans-serif",
+                  }}
+                >
+                  {aiText}
+                  {aiLoading && (
+                    <span
+                      className="inline-block w-0.5 h-4 ml-0.5 align-middle rounded-full"
+                      style={{
+                        background: "hsl(265,80%,65%)",
+                        animation: "pulse 0.8s ease-in-out infinite",
+                      }}
+                    />
+                  )}
+                </div>
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <p className="text-[10px] text-muted-foreground/60">
+                    Generado por <b>Llama 3.3 70B</b> vía OpenRouter ·
+                    Verificar conclusiones con un experto en ingeniería industrial.
+                  </p>
+                  <span
+                    className="text-[10px] px-2 py-0.5 rounded-full border"
+                    style={{
+                      borderColor: "hsla(265,80%,62%,0.25)",
+                      color: "hsl(265,80%,65%)",
+                      background: "hsla(265,80%,62%,0.08)",
+                    }}
+                  >
+                    IA generativa · {aiText.split(" ").length} palabras
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* Prompt to run */}
+            {!aiText && !aiLoading && !aiError && (
+              <p className="mt-3 text-[11px] text-muted-foreground">
+                Corre la simulación y luego presiona <b className="text-foreground">Interpretar con IA</b> para
+                obtener un análisis ejecutivo en lenguaje de planta: estado del proceso, riesgo principal y
+                acción prioritaria de la semana.
+              </p>
+            )}
+          </div>
         </>
       )}
     </div>
