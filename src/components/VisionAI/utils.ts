@@ -1,4 +1,4 @@
-import { Landmark, TherbligType, EmotionState, EmotionLevel, PostureScore, HeadPose, EyeState, ClassifierConfig, DEFAULT_CLASSIFIER_CONFIG } from './types';
+import { Landmark, TherbligType, EmotionState, EmotionLevel, PostureScore, HeadPose, EyeState, ClassifierConfig, DEFAULT_CLASSIFIER_CONFIG, GestureType, GripType, HandState, ObjectCategory, BlendshapeCategory } from './types';
 
 export function dist2d(a: Landmark, b: Landmark): number {
   return Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2);
@@ -187,6 +187,229 @@ export function analyzeFace(face: Landmark[], drowsyEAR = 0.21): { emotion: Emot
     emotion: { level, score, ear: avgEAR, smile, stress: browTension, timestamp: Date.now() },
     head:    { yaw: Math.round(yaw), pitch: Math.round(pitch), roll: Math.round(roll) },
     eyes:    { leftEAR: personLeftEAR, rightEAR: personRightEAR, avgEAR, isClosed: avgEAR < closedEAR, isDrowsy: avgEAR < drowsyEAR },
+  };
+}
+
+// ── Gesture display metadata ──────────────────────────────────────────────────
+export const GESTURE_DISPLAY: Record<GestureType, { emoji: string; label: string; color: string }> = {
+  Closed_Fist:  { emoji: '✊', label: 'Puño cerrado',  color: '#f59e0b' },
+  Open_Palm:    { emoji: '✋', label: 'Palma abierta', color: '#22d3ee' },
+  Pointing_Up:  { emoji: '☝️', label: 'Señalar',       color: '#818cf8' },
+  Thumb_Down:   { emoji: '👎', label: 'Rechazo',       color: '#f43f5e' },
+  Thumb_Up:     { emoji: '👍', label: 'Aprobado',      color: '#4ade80' },
+  Victory:      { emoji: '✌️', label: 'Victoria',      color: '#a3e635' },
+  ILoveYou:     { emoji: '🤟', label: 'Genial',        color: '#e879f9' },
+  None:         { emoji: '—',  label: 'Ninguno',       color: '#64748b' },
+  Unknown:      { emoji: '?',  label: 'Desconocido',   color: '#64748b' },
+};
+
+// Gesture → therblig (override when confidence is high)
+const GESTURE_THERBLIG_MAP: Partial<Record<GestureType, TherbligType>> = {
+  Closed_Fist:  'G',   // Grasp
+  Open_Palm:    'RL',  // Release Load
+  Pointing_Up:  'P',   // Position
+  Thumb_Up:     'I',   // Inspect
+  Thumb_Down:   'AD',  // Avoidable Delay
+  Victory:      'DA',  // Disassemble
+  ILoveYou:     'U',   // Use
+};
+
+const GRIP_OBJECT: Record<GripType, ObjectCategory> = {
+  power:   'cylindrical',
+  pinch:   'small',
+  lateral: 'flat',
+  hook:    'hooked',
+  none:    'none',
+};
+
+/** Classify what the hand is doing: empty, grip type, object category */
+export function classifyHandState(
+  hand: Landmark[],
+  gesture: GestureType,
+  gestureScore: number,
+): HandState {
+  const thumbC  = fingerCurl(hand, 1, 4);
+  const indexC  = fingerCurl(hand, 5, 8);
+  const middleC = fingerCurl(hand, 9, 12);
+  const ringC   = fingerCurl(hand, 13, 16);
+  const pinkyC  = fingerCurl(hand, 17, 20);
+  const avgCurl = (thumbC + indexC + middleC + ringC + pinkyC) / 5;
+
+  const isEmpty = gesture === 'Open_Palm' || (avgCurl < 0.30 && gesture !== 'Closed_Fist');
+
+  let gripType: GripType = 'none';
+  if (!isEmpty) {
+    if (avgCurl > 0.52 && thumbC > 0.38) {
+      gripType = 'power';   // botella, mango de herramienta
+    } else if (thumbC > 0.62 && indexC > 0.62 && middleC < 0.42) {
+      gripType = 'pinch';   // objeto pequeño
+    } else if (thumbC < 0.28 && avgCurl > 0.40) {
+      gripType = 'hook';    // ganchillo, asa
+    } else {
+      gripType = 'lateral'; // objeto plano
+    }
+  }
+
+  return {
+    isEmpty,
+    gesture,
+    gestureScore: Math.round(gestureScore * 100),
+    gripType,
+    objectCategory: GRIP_OBJECT[gripType],
+  };
+}
+
+/**
+ * Contextual therblig classifier (v2).
+ *
+ * Decision priority:
+ *   1. High-confidence gesture (≥ 0.76) → direct map
+ *   2. Object-in-hand context → object-aware therbligs
+ *   3. Curl + velocity fallback (original classifier)
+ */
+export function classifyTherbligContextual(
+  hand: Landmark[],
+  otherHand: Landmark[] | null,
+  velocity: number,
+  gesture: GestureType | null | undefined,
+  gestureScore: number | undefined,
+  hasObjectInHand: boolean,
+  config: ClassifierConfig = DEFAULT_CLASSIFIER_CONFIG,
+): TherbligType {
+  // ── 1. Gesture override ──────────────────────────────────────────────────
+  const gScore = gestureScore ?? 0;
+  if (gesture && gesture !== 'None' && gesture !== 'Unknown' && gScore >= 0.76) {
+    const mapped = GESTURE_THERBLIG_MAP[gesture];
+    if (mapped) return mapped;
+  }
+
+  // ── Shared derived signals ────────────────────────────────────────────────
+  const thumb  = fingerCurl(hand, 1, 4);
+  const index  = fingerCurl(hand, 5, 8);
+  const middle = fingerCurl(hand, 9, 12);
+  const ring   = fingerCurl(hand, 13, 16);
+  const pinky  = fingerCurl(hand, 17, 20);
+  const avgCurl = (thumb + index + middle + ring + pinky) / 5;
+  const crit = Math.max(0.5, config.criticality ?? 1);
+
+  const isGripping = avgCurl > config.gripThreshold;
+  const isOpen     = avgCurl < config.openThreshold;
+  const isMoving   = velocity > config.motionThreshold;
+  const isFast     = velocity > config.fastThreshold;
+  const isStill    = velocity < 0.002 * crit;
+  const isErratic  = velocity > (0.011 / crit) && velocity < 0.024;
+
+  const handDist  = otherHand ? dist2d(hand[0], otherHand[0]) : 1;
+  const handsNear = handDist < 0.18;
+  const handsFar  = otherHand ? handDist > 0.45 : false;
+  const handY     = hand[0]?.y ?? 0.5;
+  const handHigh  = handY < 0.38;
+  const handLow   = handY > 0.82;
+
+  // ── 2. Object-aware path ─────────────────────────────────────────────────
+  if (hasObjectInHand) {
+    // Two-hand operations with object
+    if (handsNear && isMoving && isGripping)  return 'A';   // Assemble
+    if (handsFar  && isFast   && isGripping)  return 'DA';  // Disassemble
+    // Moving with object → Transport Loaded
+    if (isGripping && isFast)                 return 'TL';
+    if (isGripping && isMoving)               return 'TL';
+    // Oscillating tool use
+    if (isGripping && isErratic)              return 'U';   // Use
+    // Precise placement
+    if (isMoving && !isGripping && handHigh)  return 'P';   // Position (about to release)
+    // Stationary hold
+    if (isGripping && isStill)                return 'H';   // Hold
+    // Release zone
+    if (isOpen && isStill)                    return 'RL';  // Release Load
+    return 'G'; // Default when object in hand
+  }
+
+  // ── 3. No object detected — original curl+velocity logic ─────────────────
+  if (handsNear && isMoving && isGripping)    return 'A';
+  if (handsFar  && isFast   && isGripping)    return 'DA';
+  if (isGripping && isFast)                   return 'TE';  // Fast grip, no object → TE
+  if (isOpen    && isFast)                    return 'TE';  // Transport Empty
+  if (isGripping && isErratic)                return 'U';
+  if (isGripping && isStill)                  return 'G';   // Grasp (ready to pick)
+  if (isOpen && isStill && handLow)           return 'R';   // Rest
+  if (isOpen && isStill && handHigh)          return 'Pn';  // Plan
+  if (isOpen && isStill && velocity < 0.003)  return 'RL';
+  if (isErratic && isOpen)                    return 'Sh';  // Search
+  if (avgCurl > 0.30 && avgCurl < 0.55 && handHigh && !isMoving) return 'I';  // Inspect
+  if (avgCurl > 0.30 && avgCurl < 0.55 && !isMoving)             return 'Se'; // Select
+  if (isStill && !isGripping)                 return 'AD';  // Avoidable Delay
+  if (isMoving && !isGripping)                return 'P';   // Position
+  return 'U';
+}
+
+/** @deprecated Use classifyTherbligContextual */
+export function classifyTherbligEnhanced(
+  hand: Landmark[], otherHand: Landmark[] | null, velocity: number,
+  gesture: GestureType | null | undefined, gestureScore: number | undefined,
+  config: ClassifierConfig = DEFAULT_CLASSIFIER_CONFIG,
+): TherbligType {
+  return classifyTherbligContextual(hand, otherHand, velocity, gesture, gestureScore, false, config);
+}
+
+/** Analyze emotion using face blendshapes (highly accurate) with landmark fallback */
+export function analyzeEmotionEnhanced(
+  face: Landmark[],
+  blendshapes: BlendshapeCategory[] | null | undefined,
+  config: ClassifierConfig = DEFAULT_CLASSIFIER_CONFIG,
+): ReturnType<typeof analyzeFace> {
+  if (!blendshapes || blendshapes.length === 0) {
+    return analyzeFace(face, config.drowsyEAR);
+  }
+
+  const get = (name: string): number =>
+    blendshapes.find(b => b.categoryName === name)?.score ?? 0;
+
+  const smileL    = get('mouthSmileLeft');
+  const smileR    = get('mouthSmileRight');
+  const smile     = (smileL + smileR) / 2;
+  const browDown  = (get('browDownLeft') + get('browDownRight')) / 2;
+  const browInner = get('browInnerUp');
+  const jawOpen   = get('jawOpen');
+  const blinkL    = get('eyeBlinkLeft');
+  const blinkR    = get('eyeBlinkRight');
+  const avgBlink  = (blinkL + blinkR) / 2;
+  // EAR approximation from blink blendshape (inverted: 0=open, 1=closed)
+  const avgEAR    = Math.max(0.08, 1 - avgBlink * 1.15);
+  const isDrowsy  = avgEAR < config.drowsyEAR;
+
+  let level: EmotionLevel;
+  let score: number;
+
+  if (avgBlink > 0.70) {
+    level = 'fatigued';  score = 10;
+  } else if (avgEAR < config.drowsyEAR) {
+    level = 'fatigued';  score = 28;
+  } else if (browDown > 0.55 && smile < 0.15) {
+    level = 'stressed';  score = 22 + Math.round(browDown * 20);
+  } else if (smile > 0.42 && browInner < 0.3 && avgEAR > 0.25) {
+    level = 'motivated'; score = 88 + Math.round(smile * 12);
+  } else if (smile > 0.18) {
+    level = 'focused';   score = 60 + Math.round(smile * 30);
+  } else if (browDown > 0.35 || browInner > 0.50) {
+    level = 'stressed';  score = 35 + Math.round(browDown * 15);
+  } else {
+    level = 'neutral';   score = 50 + Math.round(jawOpen * -10);
+  }
+
+  const clampedScore = Math.max(5, Math.min(100, score));
+
+  return {
+    emotion: {
+      level, score: clampedScore,
+      ear: avgEAR, smile, stress: browDown,
+      timestamp: Date.now(),
+    },
+    head: { yaw: 0, pitch: 0, roll: 0 },
+    eyes: {
+      leftEAR: 1 - blinkL, rightEAR: 1 - blinkR,
+      avgEAR, isClosed: avgBlink > 0.85, isDrowsy,
+    },
   };
 }
 

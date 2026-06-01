@@ -51,11 +51,54 @@ export interface EyeState {
   isDrowsy: boolean;
 }
 
+export type GestureType =
+  | 'Closed_Fist' | 'Open_Palm' | 'Pointing_Up'
+  | 'Thumb_Down'  | 'Thumb_Up'  | 'Victory'
+  | 'ILoveYou'   | 'None'      | 'Unknown';
+
+export type GripType = 'power' | 'pinch' | 'lateral' | 'hook' | 'none';
+
+export type ObjectCategory = 'cylindrical' | 'small' | 'flat' | 'hooked' | 'none';
+
+export interface HandState {
+  isEmpty: boolean;
+  gesture: GestureType;
+  gestureScore: number; // 0–100
+  gripType: GripType;
+  objectCategory: ObjectCategory;
+}
+
+export interface BlendshapeCategory {
+  categoryName: string;
+  score: number;
+}
+
+export interface DetectedObject {
+  label: string;          // COCO name  (e.g. "scissors")
+  labelEs: string;        // Spanish     (e.g. "Tijeras")
+  emoji: string;          // display emoji
+  color: string;          // hex display color
+  score: number;          // 0-100
+  boundingBox: { originX: number; originY: number; width: number; height: number };
+}
+
 export interface VisionResults {
   poseLandmarks: Landmark[] | null;
   leftHandLandmarks: Landmark[] | null;
   rightHandLandmarks: Landmark[] | null;
   faceLandmarks: Landmark[] | null;
+  // Gesture recognition
+  leftGesture?: GestureType | null;
+  rightGesture?: GestureType | null;
+  leftGestureScore?: number;
+  rightGestureScore?: number;
+  leftHandState?: HandState | null;
+  rightHandState?: HandState | null;
+  faceBlendshapes?: BlendshapeCategory[] | null;
+  // Object detection
+  leftObjectInHand?: DetectedObject | null;
+  rightObjectInHand?: DetectedObject | null;
+  allDetections?: DetectedObject[];
 }
 
 export interface SessionSnapshot {

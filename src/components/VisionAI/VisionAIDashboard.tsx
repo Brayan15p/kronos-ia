@@ -13,7 +13,7 @@ import {
   EmotionState, PostureScore, HeadPose, EyeState, VisionSession,
   SessionSnapshot, ExpertTemplate, ClassifierConfig, DEFAULT_CLASSIFIER_CONFIG,
 } from './types';
-import { classifyTherblig, calculateRULA, analyzeFace, THERBLIG_INFO, ema } from './utils';
+import { classifyTherbligContextual, calculateRULA, analyzeEmotionEnhanced, THERBLIG_INFO, ema } from './utils';
 
 const SNAPSHOT_INTERVAL = 5000;
 const CONFIG_STORAGE_KEY = 'kronos_vision_config_v1';
@@ -151,7 +151,10 @@ const VisionAIDashboard: React.FC = () => {
       smoothRef.current = ema(smoothRef.current, rawVel, 0.3); // EMA smoothing
       velRef.current = { x: w.x, y: w.y };
 
-      const candidate = classifyTherblig(hand as any, other as any, smoothRef.current, configRef.current);
+      const gesture       = side === 'left' ? (results.leftGesture  ?? null) : (results.rightGesture  ?? null);
+      const gestureScore  = side === 'left' ? (results.leftGestureScore ?? 0) : (results.rightGestureScore ?? 0);
+      const hasObj        = !!(side === 'left' ? results.leftObjectInHand : results.rightObjectInHand);
+      const candidate = classifyTherbligContextual(hand as any, other as any, smoothRef.current, gesture, gestureScore, hasObj, configRef.current);
 
       if (!frameRef.current || frameRef.current.type !== candidate) {
         frameRef.current = { type: candidate, count: 1, firstSeen: now };
@@ -182,9 +185,9 @@ const VisionAIDashboard: React.FC = () => {
     processHand(lh, rh, leftVelRef,  leftSmoothVel,  leftFrameRef,  lastLeftRef,  'left',  setCurrentLeftT,  t => { currentTRef.current.l = t; });
     processHand(rh, lh, rightVelRef, rightSmoothVel, rightFrameRef, lastRightRef, 'right', setCurrentRightT, t => { currentTRef.current.r = t; });
 
-    // ── Face/emotion ──
+    // ── Face/emotion (blendshapes when available, landmark fallback) ──
     if (face) {
-      const { emotion, head, eyes } = analyzeFace(face as any, configRef.current.drowsyEAR);
+      const { emotion, head, eyes } = analyzeEmotionEnhanced(face as any, results.faceBlendshapes, configRef.current);
       setCurrentEmotion(emotion);
       setCurrentHead(head);
       setCurrentEyes(eyes);
