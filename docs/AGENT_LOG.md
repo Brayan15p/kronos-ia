@@ -16,3 +16,5 @@ Para ver los commits de cada agente: `git log --grep="^Agent:"` o `git log --for
 | 2026-10-31 | Claude Code | `claude-code/upbeat-mccarthy-urf0ml` | Neon como base de datos principal (Neon Auth + Data API), esquema portátil Neon/Supabase y pruebas de permisos en ambos modos |
 | 2026-10-31 | Claude Code (subagente) | `claude-code/upbeat-mccarthy-urf0ml` | Paquete SG-SST: evaluaciones, matriz GTC 45:2012, mediciones, plan de acción, PDF de evidencias, CSV y 28 tests |
 | 2026-10-31 | Claude Code | `claude-code/upbeat-mccarthy-urf0ml` | Dosis de ruido según Res. 1792/1990 (5 dB), CSV del Centro de Mando con escape correcto, etiquetas sin "Cumple" |
+| 2026-10-31 | Claude Code (subagente) | `claude-code/upbeat-mccarthy-urf0ml` | Curva de aprendizaje (Wright) y matriz de competencias ILUO con alertas de entrenamiento y 36 tests |
+| 2026-10-31 | Claude Code | `claude-code/upbeat-mccarthy-urf0ml` | Balanceo de línea y yamazumi con riesgo Monte Carlo; batería de 101 pruebas contra producción |
