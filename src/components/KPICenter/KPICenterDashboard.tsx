@@ -11,6 +11,7 @@ import CertificationExport from './CertificationExport';
 import { buildAlerts } from './predictiveAlerts';
 import { downloadCSV } from '../VisionAI/utils';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Legend } from 'recharts';
+import { withPdfSafeText } from "@/lib/pdf";
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { lastTableY } from '@/lib/pdf';
@@ -76,7 +77,7 @@ const KPICenterDashboard: React.FC = () => {
   }), [operators, cycles]);
 
   const exportPDF = () => {
-    const doc = new jsPDF();
+    const doc = withPdfSafeText(new jsPDF());
     const pw = doc.internal.pageSize.getWidth();
     doc.setFontSize(20); doc.setTextColor(0, 210, 238);
     doc.text('KRONOS KPI CENTER — Reporte Gerencial', pw / 2, 18, { align: 'center' });

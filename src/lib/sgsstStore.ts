@@ -10,7 +10,7 @@
 import { useSyncExternalStore } from "react";
 import {
   isNC, isND, isNE, CONTROL_TYPES,
-  type ActionItem, type ActionStatus, type ControlType, type ErgoEvaluation, type MatrixOverride, type NRLevel,
+  type ActionItem, type ActionStatus, type ControlType, type ErgoEvaluation, type ExpertValidation, type MatrixOverride, type NRLevel,
 } from "@/lib/sgsst";
 import type { CameraView } from "@/components/VisionAI/types";
 
@@ -54,11 +54,35 @@ const VIEWS: (CameraView | "")[] = ["lateral", "oblicua", "frontal", "desconocid
 const STATUSES: ActionStatus[] = ["pendiente", "en-curso", "cerrada"];
 const NR_LEVELS: NRLevel[] = ["I", "II", "III", "IV"];
 
+const inRange = (v: unknown, lo: number, hi: number): number | null => {
+  const n = num(v);
+  return n != null && n >= lo && n <= hi ? n : null;
+};
+
+/** Revisión del experto: si falta o está dañada se descarta (la evaluación sigue cargando sin ella). */
+export function parseExpertValidation(v: unknown): ExpertValidation | null {
+  if (!isObj(v)) return null;
+  const rula = inRange(v.rula, 1, 7);
+  const reba = inRange(v.reba, 1, 15);
+  if (rula == null || reba == null) return null;
+  return {
+    rula,
+    reba,
+    rulaCamara: inRange(v.rulaCamara, 1, 7),
+    rebaCamara: inRange(v.rebaCamara, 1, 15),
+    revisor: str(v.revisor),
+    fecha: str(v.fecha),
+    nota: str(v.nota),
+    campos: Array.isArray(v.campos) ? v.campos.filter((c): c is string => typeof c === "string") : [],
+  };
+}
+
 function parseEvaluation(v: unknown): ErgoEvaluation | null {
   if (!isObj(v)) return null;
   const rulaAvg = num(v.rulaAvg);
   if (!str(v.id) || !str(v.puesto).trim() || rulaAvg == null) return null;
   const vista = str(v.vista) as CameraView | "";
+  const experto = parseExpertValidation(v.experto);
   return {
     id: str(v.id),
     puesto: str(v.puesto),
@@ -76,6 +100,8 @@ function parseEvaluation(v: unknown): ErgoEvaluation | null {
     cicloSeg: num(v.cicloSeg),
     horasExposicion: num(v.horasExposicion) ?? 8,
     createdAt: str(v.createdAt),
+    // Solo se añade si existe: las evaluaciones antiguas quedan idénticas a como se guardaron.
+    ...(experto ? { experto } : {}),
   };
 }
 

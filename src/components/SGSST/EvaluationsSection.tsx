@@ -83,7 +83,7 @@ const EvaluationsSection: React.FC<Props> = ({ evaluations, defaultCycle }) => {
             <table className="w-full text-xs min-w-[760px]">
               <thead>
                 <tr className="text-left text-muted-foreground border-b border-border/30">
-                  {["Fecha", "Puesto", "Operario", "Origen", "RULA prom./máx.", "REBA prom./máx.", "Confianza", "Vista", "Ciclo (s)", "Notas", ""].map((h) => (
+                  {["Fecha", "Puesto", "Operario", "Origen", "RULA cámara / experto", "REBA cámara / experto", "Revisó", "Confianza", "Vista", "Ciclo (s)", "Notas", ""].map((h) => (
                     <th key={h} className="py-2 px-1 font-medium">{h}</th>
                   ))}
                 </tr>
@@ -99,9 +99,20 @@ const EvaluationsSection: React.FC<Props> = ({ evaluations, defaultCycle }) => {
                         {e.origen === "vision-ai" ? <><ScanEye className="w-3 h-3 text-primary" /> Vision AI</> : <><PenLine className="w-3 h-3" /> Manual</>}
                       </span>
                     </td>
-                    <td className="py-2 px-1 font-mono">{e.rulaAvg} / {e.rulaMax}</td>
-                    <td className="py-2 px-1 font-mono">{e.rebaAvg ?? "—"} / {e.rebaMax ?? "—"}</td>
-                    <td className={`py-2 px-1 ${e.origen === "vision-ai" && (e.confianza == null || e.confianza < 0.35) ? "text-red-400" : ""}`}>
+                    <td className="py-2 px-1 font-mono" title="Cámara: promedio (máximo) de la sesión · experto: postura revisada">
+                      {e.rulaAvg} ({e.rulaMax}) / {e.experto ? <b className="text-foreground">{e.experto.rula}</b> : "—"}
+                    </td>
+                    <td className="py-2 px-1 font-mono" title="Cámara: promedio (máximo) de la sesión · experto: postura revisada">
+                      {e.rebaAvg ?? "—"} ({e.rebaMax ?? "—"}) / {e.experto ? <b className="text-foreground">{e.experto.reba}</b> : "—"}
+                    </td>
+                    <td className="py-2 px-1">
+                      {e.experto ? (
+                        <span title={[...e.experto.campos, e.experto.nota].filter(Boolean).join(" · ") || undefined}>
+                          {e.experto.revisor || "Sin nombre"}<br /><span className="text-muted-foreground font-mono">{e.experto.fecha}</span>
+                        </span>
+                      ) : <span className="text-muted-foreground">Sin revisar</span>}
+                    </td>
+                    <td className={`py-2 px-1 ${!e.experto && e.origen === "vision-ai" && (e.confianza == null || e.confianza < 0.35) ? "text-red-400" : ""}`}>
                       {e.origen === "vision-ai" ? confidenceLabel(e.confianza) : "—"}
                     </td>
                     <td className="py-2 px-1">{VIEW_LABEL[e.vista]}</td>
@@ -121,7 +132,9 @@ const EvaluationsSection: React.FC<Props> = ({ evaluations, defaultCycle }) => {
             </table>
           </div>
         )}
-        <p className="text-[11px] text-muted-foreground mt-3">{CAMERA_NOTE}</p>
+        <p className="text-[11px] text-muted-foreground mt-3">
+          {CAMERA_NOTE} Cuando hay revisión del experto, la matriz GTC 45 usa el valor del experto (columna «experto»).
+        </p>
       </div>
     </div>
   );

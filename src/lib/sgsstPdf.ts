@@ -7,7 +7,7 @@
  */
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
-import { lastTableY } from "@/lib/pdf";
+import { lastTableY, withPdfSafeText } from "@/lib/pdf";
 import {
   SCOPE_NOTE, CAMERA_NOTE, GTC45_SOURCE, CONTROL_LABEL, STATUS_LABEL, VIEW_LABEL,
   NP_INTERPRETATION, NR_INTERPRETATION, LEVEL_TEXT, ndOption, neOption, ncOption, confidenceLabel, noiseLimitForHours,
@@ -37,7 +37,7 @@ const NR_FILL: Record<string, [number, number, number]> = {
 };
 
 export function buildSGSSTPdf(data: SGSSTPdfData): jsPDF {
-  const doc = new jsPDF();
+  const doc = withPdfSafeText(new jsPDF());
   const when = data.generatedAt ?? new Date();
   const toc: { title: string; page: number }[] = [];
   const width = () => doc.internal.pageSize.getWidth();
@@ -132,12 +132,17 @@ export function buildSGSSTPdf(data: SGSSTPdfData): jsPDF {
   if (data.evaluations.length === 0) {
     paragraph("No hay evaluaciones registradas.", y, 9, MUTED);
   } else {
+    const sortedEvals = [...data.evaluations].sort((a, b) => a.fecha.localeCompare(b.fecha));
+    // «cámara» = promedio (máximo) de la sesión; «experto» = postura revisada por el experto.
+    const camExp = (avg: number | null, max: number | null, exp: number | undefined) =>
+      `${fmt1(avg)} (máx. ${fmt1(max)}) / ${exp == null ? "—" : fmt1(exp)}`;
     autoTable(doc, {
       startY: y,
-      head: [["Fecha", "Puesto", "Operario", "Origen", "RULA prom.", "RULA máx.", "REBA prom.", "REBA máx.", "Confianza", "Vista", "Ciclo (s)", "h/jornada", "Notas"]],
-      body: [...data.evaluations].sort((a, b) => a.fecha.localeCompare(b.fecha)).map((e) => [
+      head: [["Fecha", "Puesto", "Operario", "Origen", "RULA cámara / experto", "REBA cámara / experto", "Revisó", "Confianza", "Vista", "Ciclo (s)", "h/jornada", "Notas"]],
+      body: sortedEvals.map((e) => [
         e.fecha, e.puesto, e.operario || "Anónimo", e.origen === "vision-ai" ? "Vision AI" : "Manual",
-        fmt1(e.rulaAvg), fmt1(e.rulaMax), fmt1(e.rebaAvg), fmt1(e.rebaMax),
+        camExp(e.rulaAvg, e.rulaMax, e.experto?.rula), camExp(e.rebaAvg, e.rebaMax, e.experto?.reba),
+        e.experto ? `${e.experto.revisor || "Sin nombre"} (${e.experto.fecha})` : "Sin revisar",
         e.origen === "vision-ai" ? confidenceLabel(e.confianza) : "No aplica (manual)",
         VIEW_LABEL[e.vista], fmt1(e.cicloSeg), fmt1(e.horasExposicion), e.notas,
       ]),
@@ -145,7 +150,34 @@ export function buildSGSSTPdf(data: SGSSTPdfData): jsPDF {
       headStyles: { fillColor: HEAD },
       styles: { fontSize: 7.5 },
     });
-    paragraph(CAMERA_NOTE, lastTableY(doc) + 6, 7.5, MUTED);
+    y = paragraph(
+      "RULA/REBA cámara: promedio de la sesión (máximo entre paréntesis). Experto: valor corregido por el experto sobre la postura revisada; " +
+      "cuando existe, es el que usa la matriz GTC 45 (fila marcada como validada por experto).",
+      lastTableY(doc) + 6, 7.5, MUTED,
+    );
+    y = paragraph(CAMERA_NOTE, y, 7.5, MUTED);
+    const reviewed = sortedEvals.filter((e) => e.experto);
+    if (reviewed.length) {
+      doc.setFontSize(11);
+      doc.setTextColor(...TEXT);
+      doc.text("Revisiones del experto", 14, y + 2);
+      autoTable(doc, {
+        startY: y + 5,
+        head: [["Fecha", "Puesto", "Revisó", "RULA cámara (postura revisada)", "RULA experto", "REBA cámara (postura revisada)", "REBA experto", "Campos corregidos", "Nota"]],
+        body: reviewed.map((e) => {
+          const x = e.experto!;
+          return [
+            x.fecha || e.fecha, e.puesto, x.revisor || "Sin nombre",
+            fmt1(x.rulaCamara), fmt1(x.rula), fmt1(x.rebaCamara), fmt1(x.reba),
+            x.campos.length ? x.campos.join("\n") : "Sin cambios (confirma la cámara)", x.nota,
+          ];
+        }),
+        theme: "striped",
+        headStyles: { fillColor: HEAD, fontSize: 7 },
+        styles: { fontSize: 7 },
+        columnStyles: { 7: { cellWidth: 70 } },
+      });
+    }
   }
 
   // ── 3. Matriz GTC 45 ──

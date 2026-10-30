@@ -189,6 +189,20 @@ export function ndFromReba(score: number): NDValue {
 
 const maxND = (a: NDValue, b: NDValue): NDValue => (a >= b ? a : b);
 
+/**
+ * Postura con revisión del experto: se usan los valores del experto (no los de la cámara) y se
+ * deja constancia de ambos en la base de la propuesta.
+ */
+export function proposeNDPosturaExperto(x: ExpertValidation, camara?: { rulaAvg: number; rebaAvg: number | null }): Proposal<NDValue> {
+  const byRula = ndFromRula(x.rula);
+  const byReba = ndFromReba(x.reba);
+  const quien = [x.revisor.trim() || "sin nombre", x.fecha].filter(Boolean).join(", ");
+  let basis = `Validado por experto (${quien}): RULA ${x.rula} → ND ${ndOption(byRula).label} (${byRula}); ` +
+    `REBA ${x.reba} → ND ${ndOption(byReba).label} (${byReba}). Se toma el mayor.`;
+  if (camara) basis += ` Cámara (tamizaje): RULA prom. ${fmt1(camara.rulaAvg)}, REBA prom. ${camara.rebaAvg == null ? "—" : fmt1(camara.rebaAvg)}.`;
+  return { value: maxND(byRula, byReba), basis };
+}
+
 /** Postura: se toma el peor de los dos métodos, sobre los promedios de la sesión (postura mantenida). */
 export function proposeNDPostura(rulaAvg: number, rebaAvg: number | null): Proposal<NDValue> {
   const byRula = ndFromRula(rulaAvg);
@@ -364,6 +378,28 @@ export const HAZARDS: Record<HazardKey, HazardInfo> = {
 
 export type EvalOrigin = "vision-ai" | "manual";
 
+/**
+ * Revisión del experto (ergónomo) sobre la postura evaluada por la cámara. Es el valor que
+ * debe usarse para decidir: la cámara es un tamizaje. Campo opcional de ErgoEvaluation: las
+ * evaluaciones guardadas antes de existir esta revisión no lo tienen y siguen cargando igual.
+ */
+export interface ExpertValidation {
+  /** RULA corregido por el experto (1–7). */
+  rula: number;
+  /** REBA corregido por el experto (1–15). */
+  reba: number;
+  /** RULA y REBA que estimó la cámara para LA MISMA postura revisada (null si no se registró). */
+  rulaCamara: number | null;
+  rebaCamara: number | null;
+  /** Nombre de quien revisó. */
+  revisor: string;
+  /** AAAA-MM-DD */
+  fecha: string;
+  nota: string;
+  /** Campos corregidos, legibles (p. ej. «Muñeca: 8° → 25°», «Hombro elevado: sí»). */
+  campos: string[];
+}
+
 export interface ErgoEvaluation {
   id: string;
   puesto: string;
@@ -386,6 +422,8 @@ export interface ErgoEvaluation {
   /** Horas por jornada en la tarea evaluada. */
   horasExposicion: number;
   createdAt: string;
+  /** Revisión del experto. Ausente en evaluaciones sin revisar (y en las guardadas antes de existir). */
+  experto?: ExpertValidation | null;
 }
 
 export interface SessionSummary {
@@ -475,8 +513,10 @@ export interface MatrixRow extends RiskEvaluation {
   excluded: boolean;
   /** true si el usuario cambió ND, NE o NC respecto a la propuesta. */
   edited: boolean;
-  /** Confianza baja o sin dato en la evaluación de origen. */
+  /** Confianza baja o sin dato en la evaluación de origen (false si un experto la validó). */
   lowConfidence: boolean;
+  /** true si la propuesta usa los valores corregidos por un experto. */
+  validadoExperto: boolean;
   controles: Record<ControlType, string>;
 }
 
@@ -488,7 +528,7 @@ export const rowId = (hazard: HazardKey, lugar: string) => `${hazard}:${slug(lug
 function makeRow(
   hazard: HazardKey, lugar: string, fuente: string,
   nd: Proposal<NDValue>, ne: Proposal<NEValue>, expuestos: number, lowConfidence: boolean,
-  overrides: Record<string, MatrixOverride>,
+  overrides: Record<string, MatrixOverride>, validadoExperto = false,
 ): MatrixRow {
   const info = HAZARDS[hazard];
   const id = rowId(hazard, lugar);
@@ -514,6 +554,7 @@ function makeRow(
     excluded: o.excluded ?? false,
     edited: fnd !== proposed.nd || fne !== proposed.ne || fnc !== proposed.nc,
     lowConfidence,
+    validadoExperto,
     controles: info.controles,
   };
 }
@@ -570,11 +611,15 @@ export interface MatrixInput {
 export function buildMatrix({ evaluations, readings, overrides }: MatrixInput): MatrixRow[] {
   const rows: MatrixRow[] = [];
   for (const e of latestByPuesto(evaluations)) {
+    const x = e.experto ?? null;
     const fuente = `Evaluación ${e.origen === "vision-ai" ? "Vision AI" : "manual"} del ${e.fecha}` +
-      (e.origen === "vision-ai" ? `, confianza ${confidenceLabel(e.confianza)}` : "");
-    const low = e.origen === "vision-ai" && (e.confianza == null || e.confianza < 0.35);
+      (e.origen === "vision-ai" ? `, confianza ${confidenceLabel(e.confianza)}` : "") +
+      (x ? `; validado por experto (${x.revisor.trim() || "sin nombre"}${x.fecha ? `, ${x.fecha}` : ""})` : "");
+    // La revisión del experto sustituye a la cámara: la confianza baja deja de ser una alerta.
+    const low = !x && e.origen === "vision-ai" && (e.confianza == null || e.confianza < 0.35);
     const ne = proposeNE(e.horasExposicion);
-    rows.push(makeRow("postura", e.puesto, fuente, proposeNDPostura(e.rulaAvg, e.rebaAvg), ne, 1, low, overrides));
+    const ndPostura = x ? proposeNDPosturaExperto(x, { rulaAvg: e.rulaAvg, rebaAvg: e.rebaAvg }) : proposeNDPostura(e.rulaAvg, e.rebaAvg);
+    rows.push(makeRow("postura", e.puesto, fuente, ndPostura, ne, 1, low, overrides, !!x));
     rows.push(makeRow("repetitivo", e.puesto, fuente, proposeNDRepetitivo(e.cicloSeg), ne, 1, false, overrides));
   }
   for (const z of summarizeZones(readings)) {
@@ -679,6 +724,7 @@ export const MATRIX_CSV_HEADERS = [
   "NC", "NC (interpretación)", "NR", "Nivel de riesgo", "Aceptabilidad", "N.º expuestos",
   "Requisito legal asociado", "Eliminación", "Sustitución", "Controles de ingeniería",
   "Controles administrativos", "EPP", "Propuesta de ND (base)", "Propuesta de NE (base)", "Editado por el usuario", "Observaciones",
+  "Validado por experto",
 ];
 
 export function matrixToCSV(rows: MatrixRow[]): string {
@@ -689,7 +735,7 @@ export function matrixToCSV(rows: MatrixRow[]): string {
       r.nd, ndOption(r.nd).label, r.ne, neOption(r.ne).label, r.np, NP_INTERPRETATION[r.npLevel].label,
       r.nc, ncOption(r.nc).label, r.nr, r.nrLevel, r.aceptabilidad, r.expuestos, r.requisitoLegal,
       r.controles.eliminacion, r.controles.sustitucion, r.controles.ingenieria, r.controles.administrativo, r.controles.epp,
-      r.ndBasis, r.neBasis, r.edited, r.observaciones,
+      r.ndBasis, r.neBasis, r.edited, r.observaciones, r.validadoExperto,
     ]),
     [`Matriz de peligros — metodología ${GTC45_SOURCE}`, SCOPE_NOTE],
   );

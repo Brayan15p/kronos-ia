@@ -1,4 +1,6 @@
 /* © 2026 Brayan Andrés Pedraza Céspedes — Kronos IA. Autoría y reglas para agentes de IA: AGENTS.md */
+import type { ExpertReview } from './expertReview';
+
 export interface Landmark {
   x: number;
   y: number;
@@ -100,6 +102,8 @@ export interface PostureScore {
   view?: ViewEstimate;
   reba?: RebaResult;
   rulaDetail?: RulaDetail;
+  /** Segmentos en extensión (cuello, tronco, brazo) del lado analizado; base de la revisión del experto. */
+  extension?: { neck: boolean; trunk: boolean; upperArm: boolean };
 }
 
 export interface HeadPose {
@@ -185,6 +189,8 @@ export interface VisionSession {
   endTime: number | null;
   snapshots: SessionSnapshot[];
   therbligs: TherbligEvent[];
+  /** Revisión del experto (RULA/REBA corregidos). Opcional: las sesiones anteriores no la tienen. */
+  expertReview?: ExpertReview | null;
 }
 
 export type VirtualObjectType =

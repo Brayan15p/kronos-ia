@@ -3,7 +3,11 @@ import React from 'react';
 import { FileDown, FileSpreadsheet } from 'lucide-react';
 import { VisionSession, EmotionState } from './types';
 import { THERBLIG_INFO, EMOTION_INFO, downloadCSV } from './utils';
-import { confidenceLevel } from './ergonomics';
+import { confidenceLevel, SEGMENT_LABEL } from './ergonomics';
+import {
+  REVIEW_SEGMENTS, FACTOR_KEYS, FACTOR_META, DEFAULT_FACTORS, EXPERT_NOTE, REVIEW_SOURCE_LABEL, fmtAngle, fmtFactor,
+} from './expertReview';
+import { withPdfSafeText } from "@/lib/pdf";
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { lastTableY } from '@/lib/pdf';
@@ -41,12 +45,13 @@ const VisionReport: React.FC<Props> = ({ session, operatorName = 'Operario' }) =
   const confVals = session.snapshots.map(s => s.ergoConfidence).filter((v): v is number => typeof v === 'number');
   const avgConfNum = confVals.length ? confVals.reduce((a, b) => a + b, 0) / confVals.length : null;
   const avgConf = avgConfNum == null ? '—' : `${Math.round(avgConfNum * 100)}% (${confidenceLevel(avgConfNum)})`;
+  const review = session.expertReview ?? null;
   const avgEar = session.snapshots.length
     ? (session.snapshots.reduce((s, e) => s + e.ear, 0) / session.snapshots.length).toFixed(2)
     : '—';
 
   const exportPDF = () => {
-    const doc = new jsPDF();
+    const doc = withPdfSafeText(new jsPDF());
     const pw = doc.internal.pageSize.getWidth();
 
     // Header
@@ -72,6 +77,10 @@ const VisionReport: React.FC<Props> = ({ session, operatorName = 'Operario' }) =
         ['Bienestar promedio', `${avgEmotion}%`],
         ['Score RULA promedio (1–7)', avgRula],
         ['Score REBA promedio (1–15)', avgReba],
+        ...(review ? [
+          ['RULA revisado por experto (postura revisada)', `${review.expert.rula} (cámara: ${review.camera.rula})`],
+          ['REBA revisado por experto (postura revisada)', `${review.expert.reba} (cámara: ${review.camera.reba})`],
+        ] : []),
         ['Confianza ergonómica promedio', avgConf],
         ['EAR promedio (ojos)', avgEar],
         ['Total eventos Therblig', session.therbligs.length.toString()],
@@ -95,6 +104,75 @@ const VisionReport: React.FC<Props> = ({ session, operatorName = 'Operario' }) =
     );
     doc.text(ergoNote, 14, y);
     y += ergoNote.length * 3.5 + 6;
+
+    // Revisión del experto (RULA/REBA corregidos sobre una postura de la sesión)
+    if (review) {
+      if (y > 200) { doc.addPage(); y = 20; }
+      doc.setFontSize(13);
+      doc.setTextColor(60, 60, 70);
+      doc.text('Revisión del experto (RULA / REBA)', 14, y);
+      y += 5;
+      doc.setFontSize(8);
+      doc.setTextColor(120, 130, 140);
+      const revHead = doc.splitTextToSize(
+        `Revisó: ${review.reviewer || 'sin nombre'} · Fecha: ${review.date}` +
+        (review.puesto ? ` · Puesto: ${review.puesto}` : '') +
+        ` · ${REVIEW_SOURCE_LABEL[review.source]}${review.side ? ` (lado ${review.side})` : ''}. ${EXPERT_NOTE}`,
+        pw - 28,
+      );
+      doc.text(revHead, 14, y);
+      y += revHead.length * 3.5 + 2;
+      autoTable(doc, {
+        startY: y,
+        head: [['Puntuación', 'Cámara (tamizaje)', 'Experto', 'Diferencia']],
+        body: [
+          ['RULA (1–7)', String(review.camera.rula), String(review.expert.rula), String(review.expert.rula - review.camera.rula)],
+          ['REBA (1–15)', String(review.camera.reba), String(review.expert.reba), String(review.expert.reba - review.camera.reba)],
+        ],
+        theme: 'grid',
+        headStyles: { fillColor: [0, 180, 210] },
+        styles: { fontSize: 8.5 },
+      });
+      y = lastTableY(doc) + 3;
+      autoTable(doc, {
+        startY: y,
+        head: [['Segmento', 'Ángulo cámara', 'Confianza', 'Ángulo experto', 'Corregido']],
+        body: REVIEW_SEGMENTS.map(seg => [
+          SEGMENT_LABEL[seg],
+          fmtAngle(review.measured[seg]),
+          review.confidence[seg] != null ? `${Math.round((review.confidence[seg] as number) * 100)}%` : '—',
+          fmtAngle(review.angles[seg]),
+          review.overriddenAngles.includes(seg) ? 'Sí' : 'No',
+        ]),
+        theme: 'striped',
+        headStyles: { fillColor: [0, 180, 210] },
+        styles: { fontSize: 8 },
+      });
+      y = lastTableY(doc) + 3;
+      autoTable(doc, {
+        startY: y,
+        head: [['Factor de ajuste', 'Método', 'Supuesto de la cámara', 'Experto']],
+        body: FACTOR_KEYS.map(k => [
+          FACTOR_META[k].label, FACTOR_META[k].method, fmtFactor(k, DEFAULT_FACTORS[k]), fmtFactor(k, review.factors[k]),
+        ]),
+        theme: 'striped',
+        headStyles: { fillColor: [0, 180, 210] },
+        styles: { fontSize: 7.5 },
+        didParseCell: h => {
+          if (h.section === 'body' && review.overriddenFactors.includes(FACTOR_KEYS[h.row.index])) h.cell.styles.fontStyle = 'bold';
+        },
+      });
+      y = lastTableY(doc) + 5;
+      if (review.note) {
+        doc.setFontSize(8);
+        doc.setTextColor(60, 60, 70);
+        const noteLines = doc.splitTextToSize(`Nota del experto: ${review.note}`, pw - 28);
+        if (y + noteLines.length * 3.5 > 280) { doc.addPage(); y = 20; }
+        doc.text(noteLines, 14, y);
+        y += noteLines.length * 3.5 + 4;
+      }
+      y += 4;
+    }
 
     // Therbligs table
     const byType: Record<string, number> = {};
@@ -159,9 +237,17 @@ const VisionReport: React.FC<Props> = ({ session, operatorName = 'Operario' }) =
   };
 
   const exportCSV = () => {
+    // Con revisión del experto se añaden sus valores (iguales en todas las filas: corresponden
+    // a la postura revisada, no a cada muestra).
+    const reviewHeaders = review
+      ? ['RULA camara (postura revisada)', 'RULA experto', 'REBA camara (postura revisada)', 'REBA experto', 'Reviso', 'Fecha revision', 'Nota experto']
+      : [];
+    const reviewCells = review
+      ? [review.camera.rula, review.expert.rula, review.camera.reba, review.expert.reba, review.reviewer, review.date, review.note.replace(/"/g, "'")]
+      : [];
     downloadCSV(
       `kronos_vision_${new Date().toISOString().slice(0, 10)}.csv`,
-      ['Tiempo', 'Emocion', 'Bienestar', 'RULA', 'REBA', 'Confianza ergonomica', 'EAR', 'Therblig', 'Timestamp'],
+      ['Tiempo', 'Emocion', 'Bienestar', 'RULA', 'REBA', 'Confianza ergonomica', 'EAR', 'Therblig', 'Timestamp', ...reviewHeaders],
       session.snapshots.map(s => [
         fmtTime(s.timestamp - session.startTime),
         EMOTION_INFO[s.emotion]?.label || s.emotion,
@@ -172,6 +258,7 @@ const VisionReport: React.FC<Props> = ({ session, operatorName = 'Operario' }) =
         s.ear.toFixed(3),
         s.therblig || '',
         fmtDate(s.timestamp),
+        ...reviewCells,
       ])
     );
   };
@@ -190,6 +277,10 @@ const VisionReport: React.FC<Props> = ({ session, operatorName = 'Operario' }) =
               { label: 'Bienestar', value: `${avgEmotion}%`, color: '#818cf8' },
               { label: 'RULA prom.', value: avgRula, color: '#22d3ee' },
               { label: 'REBA prom.', value: avgReba, color: '#22d3ee' },
+              ...(review ? [
+                { label: 'RULA experto', value: String(review.expert.rula), color: '#a78bfa' },
+                { label: 'REBA experto', value: String(review.expert.reba), color: '#a78bfa' },
+              ] : []),
               { label: 'Confianza ergo.', value: avgConfNum == null ? '—' : `${Math.round(avgConfNum * 100)}%`, color: '#94a3b8' },
               { label: 'Duración', value: fmtTime(durationMs), color: '#94a3b8' },
             ].map(({ label, value, color }) => (

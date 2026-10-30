@@ -126,6 +126,7 @@ export function calculateRULA(pose: Landmark[], strictness = 1): PostureScore {
     wristAngle: r.angles.wrist == null ? 0 : Math.round(r.angles.wrist),
     risk: r.risk,
     confidence, overallConfidence: overallConfidence(confidence), view, reba, rulaDetail: r.detail,
+    extension: r.extension,
   };
 }
 

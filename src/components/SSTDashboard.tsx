@@ -10,7 +10,7 @@ import {
 import { AlertTriangle, TrendingDown, TrendingUp, Zap, Shield, Activity, FileDown, FileSpreadsheet } from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
-import { lastTableY } from "@/lib/pdf";
+import { lastTableY, withPdfSafeText } from "@/lib/pdf";
 
 const COLORS = ["#22c55e", "#eab308", "#ef4444"];
 
@@ -135,7 +135,7 @@ const SSTDashboard: React.FC = () => {
 
   // Generate PDF
   const generatePDF = () => {
-    const doc = new jsPDF();
+    const doc = withPdfSafeText(new jsPDF());
     const pw = doc.internal.pageSize.getWidth();
 
     doc.setFontSize(20);

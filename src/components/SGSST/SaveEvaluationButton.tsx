@@ -6,6 +6,7 @@ import { useTimeStudy } from "@/context/TimeStudyContext";
 import { confidenceLabel, meanCycleSeconds, summarizeSnapshots, todayLocal, VIEW_LABEL } from "@/lib/sgsst";
 import { newId, sgsstActions } from "@/lib/sgsstStore";
 import type { VisionSession } from "@/components/VisionAI/types";
+import { toExpertValidation } from "@/components/VisionAI/expertReview";
 
 /** Guarda el resultado de una sesión de Vision AI como evaluación del Paquete SG-SST. */
 const SaveEvaluationButton: React.FC<{ session: VisionSession }> = ({ session }) => {
@@ -15,6 +16,7 @@ const SaveEvaluationButton: React.FC<{ session: VisionSession }> = ({ session })
   const [operario, setOperario] = useState("");
   const [notas, setNotas] = useState("");
   const summary = summarizeSnapshots(session.snapshots);
+  const review = session.expertReview ?? null;
 
   if (!summary) return null;
 
@@ -34,6 +36,8 @@ const SaveEvaluationButton: React.FC<{ session: VisionSession }> = ({ session })
       cicloSeg: meanCycleSeconds(cycles, operario),
       horasExposicion: 8,
       createdAt: new Date().toISOString(),
+      // Valor de la cámara (rulaAvg…) y, si hay revisión, el del experto: la matriz usa el del experto.
+      ...(review ? { experto: toExpertValidation(review) } : {}),
     });
     toast.success("Evaluación guardada en el Paquete SG-SST");
     setOpen(false);
@@ -42,7 +46,7 @@ const SaveEvaluationButton: React.FC<{ session: VisionSession }> = ({ session })
 
   if (!open) {
     return (
-      <button onClick={() => setOpen(true)} className="btn-secondary-glass w-full flex items-center justify-center gap-1.5 text-xs">
+      <button onClick={() => { if (!puesto && review?.puesto) setPuesto(review.puesto); setOpen(true); }} className="btn-secondary-glass w-full flex items-center justify-center gap-1.5 text-xs">
         <ShieldCheck className="w-3.5 h-3.5" /> Guardar evaluación en SG-SST
       </button>
     );
@@ -60,11 +64,19 @@ const SaveEvaluationButton: React.FC<{ session: VisionSession }> = ({ session })
         RULA {summary.rulaAvg} (máx. {summary.rulaMax}) · REBA {summary.rebaAvg ?? "—"} (máx. {summary.rebaMax ?? "—"}) ·
         confianza {confidenceLabel(summary.confianza)} · vista {VIEW_LABEL[summary.vista].toLowerCase()} · {summary.muestras} muestras
       </p>
+      {review ? (
+        <p className="text-[11px] text-foreground">
+          Validado por experto ({review.reviewer || "sin nombre"}, {review.date}): RULA {review.expert.rula} · REBA {review.expert.reba}.
+          La matriz GTC 45 usará estos valores.
+        </p>
+      ) : (
+        <p className="text-[11px] text-muted-foreground">Sin revisión del experto: la matriz usará la estimación de la cámara.</p>
+      )}
       <input value={puesto} onChange={(e) => setPuesto(e.target.value)} placeholder="Puesto o estación (obligatorio)" className="input-glass text-xs" aria-label="Puesto o estación" />
       <input value={operario} onChange={(e) => setOperario(e.target.value)} placeholder="Operario (vacío = anónimo)" className="input-glass text-xs" aria-label="Operario" />
       <input value={notas} onChange={(e) => setNotas(e.target.value)} placeholder="Notas (opcional)" className="input-glass text-xs" aria-label="Notas" />
       <p className="text-[10px] text-muted-foreground">
-        Tamizaje con una sola cámara: revisa la confianza antes de usarlo como evidencia.
+        Tamizaje con una sola cámara: revisa la confianza antes de usarlo como evidencia. Para decidir, usa el valor revisado por un experto.
       </p>
       <button onClick={save} className="btn-primary-glass w-full text-xs">Guardar evaluación</button>
     </div>

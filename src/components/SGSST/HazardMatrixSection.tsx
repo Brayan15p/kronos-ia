@@ -65,6 +65,7 @@ const RowCard: React.FC<{ row: MatrixRow }> = ({ row: r }) => {
         <span>NP = {r.nd} × {r.ne} = <b className="font-mono">{r.np}</b> ({NP_INTERPRETATION[r.npLevel].label})</span>
         <span>NR = {r.np} × {r.nc} = <b className="font-mono">{r.nr}</b> (nivel {r.nrLevel})</span>
         {r.edited && <span className="text-primary">Editado por el usuario</span>}
+        {r.validadoExperto && <span className="text-emerald-400">Validado por experto</span>}
       </div>
       <p className="text-[11px] text-muted-foreground">{NR_INTERPRETATION[r.nrLevel].desc}</p>
 
