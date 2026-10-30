@@ -19,7 +19,10 @@ latinoamericana de manufactura manual.
 - Respaldo y restauración del estudio en archivo; confirmación antes de borrar.
 - Navegación por tarea (Medir → Analizar → Mejorar → Reportar + SST) y carga de módulos bajo demanda.
 - Análisis facial con interruptor y aviso de autorización.
-- Tests de las matemáticas de Monte Carlo, del detector de ciclos, del respaldo y del endpoint de IA.
+- **Corrección del análisis de sensibilidad (Sobol):** el estimador anterior devolvía siempre 0, así que el
+  "factor que más afecta la rentabilidad" era ruido. Ahora usa el estimador de Saltelli, validado contra la
+  solución analítica (error < 0,015).
+- 51 tests: matemáticas de Monte Carlo, detector de ciclos, respaldo y endpoint de IA.
 
 ## Ahora (0–2 meses): de demo a producto que se puede cobrar
 

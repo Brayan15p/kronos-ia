@@ -297,29 +297,6 @@ function adPert(sorted: number[], mean: number, std: number): number {
 }
 
 /**
- * Índices de Sobol de primer orden — Saltelli et al. (2010), JCP.
- * Mide la fracción de varianza total debida a cada factor de entrada.
- * Reemplaza el tornado clásico con análisis de sensibilidad global.
- * Usa estimador Jansen (mínima varianza): Si = V[E(Y|Xi)] / V(Y)
- */
-function sobolFirstOrder(
-  base: number[],
-  factors: { name: string; perturb: (scenarios: number[], f: number) => number[] }[]
-): { name: string; si: number; si_pct: number }[] {
-  const N = base.length;
-  const varY = base.reduce((s, x) => s + x * x, 0) / N - (base.reduce((a, b) => a + b, 0) / N) ** 2;
-  if (varY < 1e-12) return factors.map(f => ({ name: f.name, si: 0, si_pct: 0 }));
-
-  return factors.map(f => {
-    const perturbed = f.perturb(base, 0.1);
-    const condMean = perturbed.reduce((a, b) => a + b, 0) / N;
-    const condVar  = perturbed.reduce((s, x) => s + x * x, 0) / N - condMean ** 2;
-    const si = Math.max(0, Math.min(1, (varY - condVar) / varY));
-    return { name: f.name, si, si_pct: si * 100 };
-  }).sort((a, b) => b.si - a.si);
-}
-
-/**
  * IC para percentiles — Método de Maritz-Jarrett (1979), O(1).
  * Más rápido que bootstrap: usa la distribución binomial del rango del percentil.
  * Error comparable al bootstrap con B=500 pero sin costo computacional.
@@ -2790,7 +2767,8 @@ const MonteCarloSimulator: React.FC = () => {
               </div>
               <p className="text-[10px] text-muted-foreground mb-4">
                 Fracción de varianza total de la utilidad debida a cada factor (Saltelli et al., 2010, JCP).
-                Captura efectos no lineales — más riguroso que el tornado OAT.
+                Supuesto: precio, volumen y costo de mano de obra varían ±10% (uniforme); el tiempo de ciclo
+                sigue la distribución simulada.
               </p>
               <div className="space-y-3">
                 {simResults.sobol.map((s, i) => (

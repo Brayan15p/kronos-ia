@@ -138,21 +138,56 @@ export function percentileCI(sorted: Float64Array, p: number): [number, number] 
   return [sorted[lo], sorted[hi]];
 }
 
+/** Factores del modelo económico Y = q·(p − t·c/3600) para el análisis de sensibilidad. */
+export const SOBOL_FACTORS = ["Tiempo ciclo", "Valor producto", "Volumen mensual", "Costo M.O."] as const;
+
+/**
+ * Índices de Sobol de primer orden con el estimador canónico de Saltelli et al. (2010):
+ *   Sᵢ ≈ (1/N)·Σ (f(B) − f̄)·(f(A_B⁽ⁱ⁾) − f(A)) / V(Y)
+ * donde A y B son dos muestras independientes de las entradas y A_B⁽ⁱ⁾ es A con la
+ * columna i tomada de B. Entradas independientes:
+ *   t ~ distribución simulada de tiempos de ciclo (remuestreo de `times`)
+ *   p, q, c ~ uniformes en ±`uncertainty` alrededor de su valor nominal
+ * Sᵢ es la fracción de la varianza de la utilidad que explica cada factor por sí solo.
+ */
 export function sobolFirstOrder(
-  base: number[],
-  factors: { name: string; perturb: (f: number) => number[] }[]
+  times: ArrayLike<number>,
+  price: number,
+  qty: number,
+  hourlyCost: number,
+  uncertainty = 0.1,
+  N = 16384,
 ): { name: string; si: number; si_pct: number }[] {
-  const N = base.length;
-  const meanY = base.reduce((a,b)=>a+b,0)/N;
-  const varY  = base.reduce((s,x)=>s+(x-meanY)**2,0)/N;
-  if (varY < 1e-12) return factors.map(f=>({name:f.name,si:0,si_pct:0}));
-  return factors.map(f=>{
-    const p = f.perturb(0.1);
-    const condMean = p.reduce((a,b)=>a+b,0)/N;
-    const condVar  = p.reduce((s,x)=>s+(x-condMean)**2,0)/N;
-    const si = Math.max(0, Math.min(1,(varY-condVar)/varY));
-    return { name: f.name, si, si_pct: si*100 };
-  }).sort((a,b)=>b.si-a.si);
+  const nominal = [0, price, qty, hourlyCost];
+  const draw = (k: number) =>
+    k === 0
+      ? times[Math.floor(Math.random() * times.length)]
+      : nominal[k] * (1 + uncertainty * (2 * Math.random() - 1));
+  const f = (x: number[]) => x[2] * (x[1] - (x[0] * x[3]) / 3600);
+
+  const A: number[][] = [];
+  const B: number[][] = [];
+  for (let j = 0; j < N; j++) {
+    A.push([0, 1, 2, 3].map(draw));
+    B.push([0, 1, 2, 3].map(draw));
+  }
+  const fA = A.map(f);
+  const fB = B.map(f);
+  const all = [...fA, ...fB];
+  const mean = all.reduce((a, b) => a + b, 0) / all.length;
+  const varY = all.reduce((s, y) => s + (y - mean) ** 2, 0) / all.length;
+  if (varY < 1e-12) return SOBOL_FACTORS.map((name) => ({ name, si: 0, si_pct: 0 }));
+
+  return SOBOL_FACTORS.map((name, i) => {
+    let acc = 0;
+    for (let j = 0; j < N; j++) {
+      const ABi = A[j].slice();
+      ABi[i] = B[j][i];
+      acc += (fB[j] - mean) * (f(ABi) - fA[j]); // salida centrada: misma esperanza, mucha menos varianza
+    }
+    const si = Math.max(0, Math.min(1, acc / N / varY));
+    return { name, si, si_pct: si * 100 };
+  }).sort((a, b) => b.si - a.si);
 }
 
 // ─── Capacidad de proceso (objetivo = límite superior de especificación) ────
@@ -317,18 +352,11 @@ export function runSimulation(input: SimInput, onProgress: (pct: number) => void
 
   onProgress(92);
 
-  // Sobol en subsample
+  // Sensibilidad global (Saltelli) sobre una submuestra de los escenarios simulados
   const sobolStep=Math.max(1,Math.floor(N/3000));
   const ss: number[]=[];
   for(let i=0;i<N;i+=sobolStep) ss.push(scenarios[i]);
-  const c2=avgHourlyCost/3600;
-  const sobolBase=ss.map(t=>qty*(price-t*c2));
-  const sobol=sobolFirstOrder(sobolBase,[
-    {name:"Tiempo ciclo",    perturb:f=>ss.map(t=>qty*(price-t*(1+f)*c2))},
-    {name:"Valor producto",  perturb:f=>ss.map(t=>qty*(price*(1+f)-t*c2))},
-    {name:"Volumen mensual", perturb:f=>ss.map(t=>qty*(1+f)*(price-t*c2))},
-    {name:"Costo M.O.",      perturb:f=>ss.map(t=>qty*(price-t*(avgHourlyCost*(1+f))/3600))},
-  ]);
+  const sobol=sobolFirstOrder(ss,price,qty,avgHourlyCost);
 
   onProgress(95);
 

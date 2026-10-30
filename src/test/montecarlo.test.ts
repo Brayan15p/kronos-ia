@@ -247,29 +247,64 @@ describe("VaR y CVaR al 95%", () => {
   });
 });
 
-describe("Sobol de primer orden (aproximación por perturbación)", () => {
-  it("devuelve índices en [0, 1] ordenados de mayor a menor", () => {
-    const base = [1, 2, 3, 4, 5, 6, 7, 8];
-    const r = sobolFirstOrder(base, [
-      { name: "a", perturb: () => base.map((x) => x * 0.5) },
-      { name: "b", perturb: () => base.map((x) => x * 2) },
-      { name: "c", perturb: () => base.map(() => 4.5) },
-    ]);
-    expect(r.map((x) => x.name)).toEqual(["c", "a", "b"]);
-    expect(r[0].si).toBe(1);
-    expect(r[1].si).toBeCloseTo(0.75, 12);
-    expect(r[2].si).toBe(0);
-    r.forEach((x) => expect(x.si_pct).toBeCloseTo(x.si * 100, 12));
+describe("Sobol de primer orden (estimador de Saltelli)", () => {
+  // Para Y = q·(p − k·t·c) con entradas independientes, los índices de primer orden son exactos:
+  //   S_p = (Eq)²·Var(p)/V   S_q = (EZ)²·Var(q)/V   S_t = (Eq·k·Ec)²·Var(t)/V   S_c = (Eq·k·Et)²·Var(c)/V
+  // con Z = p − k·t·c y V = E[q²]·E[Z²] − (Eq·EZ)².
+  function exactSobol(times: number[], price: number, qty: number, cost: number, u: number) {
+    const k = 1 / 3600;
+    const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
+    const Et = mean(times);
+    const Vt = mean(times.map((t) => (t - Et) ** 2));
+    const vu = (x: number) => (x * u) ** 2 / 3; // varianza de U(x(1−u), x(1+u))
+    const [Vp, Vq, Vc] = [vu(price), vu(qty), vu(cost)];
+    const EZ = price - k * Et * cost;
+    // E[Z²] = Var(p) + k²·Var(t·c) + (EZ)², con Var(t·c) = E[t²]E[c²] − (Et·Ec)²
+    const Vtc = (Vt + Et ** 2) * (Vc + cost ** 2) - (Et * cost) ** 2;
+    const EZ2 = Vp + k ** 2 * Vtc + EZ ** 2;
+    const V = (Vq + qty ** 2) * EZ2 - (qty * EZ) ** 2;
+    return {
+      "Valor producto": (qty ** 2 * Vp) / V,
+      "Volumen mensual": (EZ ** 2 * Vq) / V,
+      "Tiempo ciclo": ((qty * k * cost) ** 2 * Vt) / V,
+      "Costo M.O.": ((qty * k * Et) ** 2 * Vc) / V,
+    } as Record<string, number>;
+  }
+
+  it("coincide con los índices analíticos del modelo de utilidad", () => {
+    seedRandom(11);
+    const times = Array.from({ length: 200 }, (_, i) => 60 + i); // tiempos de 60 a 259 s
+    const r = sobolFirstOrder(times, 5000, 1000, 15000, 0.1, 40000);
+    const exact = exactSobol(times, 5000, 1000, 15000, 0.1);
+    for (const { name, si, si_pct } of r) {
+      expect(Math.abs(si - exact[name])).toBeLessThan(0.03);
+      expect(si_pct).toBeCloseTo(si * 100, 12);
+    }
+    // Ordenados de mayor a menor
+    expect(r.map((x) => x.si)).toEqual([...r.map((x) => x.si)].sort((a, b) => b - a));
   });
 
-  // BUG conocido (reportado, no corregido): con las perturbaciones que usa runSimulation
-  // (+10% en cada factor) la varianza nunca baja, así que todos los Sᵢ quedan en 0 y el
-  // orden lo decide el ruido de punto flotante. Activar cuando se corrija el estimador.
-  it.skip("el tiempo de ciclo debería dominar la varianza de la utilidad", () => {
+  it("sin incertidumbre económica, todo se explica por el tiempo de ciclo", () => {
+    seedRandom(3);
+    const r = sobolFirstOrder([80, 90, 100, 110, 120], 5000, 1000, 15000, 0, 8000);
+    expect(r[0].name).toBe("Tiempo ciclo");
+    expect(r[0].si).toBeGreaterThan(0.95);
+    r.slice(1).forEach((x) => expect(x.si).toBeLessThan(0.02));
+  });
+
+  it("si el tiempo es constante, su índice es ~0", () => {
+    seedRandom(4);
+    const r = sobolFirstOrder([100, 100, 100], 5000, 1000, 15000, 0.1, 8000);
+    expect(r.find((x) => x.name === "Tiempo ciclo")!.si).toBeLessThan(0.02);
+  });
+
+  it("en una simulación completa, los índices son coherentes y suman ≈ 1 (modelo casi aditivo)", () => {
     seedRandom(5);
     const r = runSimulation({ ...baseInput, simCount: 5000 });
-    expect(r.sobol[0].name).toBe("Tiempo ciclo");
-    expect(r.sobol[0].si).toBeGreaterThan(0.5);
+    expect(r.sobol).toHaveLength(4);
+    const total = r.sobol.reduce((s, x) => s + x.si, 0);
+    expect(total).toBeGreaterThan(0.9);
+    expect(total).toBeLessThan(1.1);
   });
 });
 
