@@ -285,6 +285,7 @@ const VisionAIDashboard: React.FC = () => {
         ear:          currentEarRef.current,
         reba:           currentPostureRef.current?.reba?.score,
         ergoConfidence: currentPostureRef.current?.overallConfidence,
+        view:           currentPostureRef.current?.view?.view,
       }];
     }
   }, []);

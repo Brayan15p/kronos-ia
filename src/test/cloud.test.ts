@@ -26,6 +26,11 @@ const fakeClient = {
   },
 };
 vi.mock("@/integrations/supabase/client", () => ({ supabase: fakeClient }));
+const neonCreateClient = vi.fn(() => fakeClient);
+vi.mock("@neondatabase/neon-js", () => ({
+  createClient: neonCreateClient,
+  SupabaseAuthAdapter: () => "adaptador-supabase",
+}));
 
 const study: StudyData = {
   steps: [{ number: 1, name: "Cortar", emoji: "✂️" }],
@@ -129,9 +134,38 @@ describe("nube: vínculo local", () => {
   });
 });
 
+describe("proveedor de la nube", () => {
+  it("con variables de Neon usa Neon Auth + Data API con el adaptador compatible con Supabase", async () => {
+    vi.stubEnv("VITE_NEON_AUTH_URL", "https://ep-demo.neonauth.c-2.us-east-2.aws.neon.tech/neondb/auth");
+    vi.stubEnv("VITE_NEON_DATA_API_URL", "https://ep-demo.apirest.c-2.us-east-2.aws.neon.tech/neondb/rest/v1");
+    vi.stubEnv("VITE_SUPABASE_URL", "https://demo.supabase.co");
+    vi.stubEnv("VITE_SUPABASE_PUBLISHABLE_KEY", "clave");
+    vi.resetModules();
+    neonCreateClient.mockClear();
+    const cloud = await import("@/lib/cloud");
+    expect(cloud.cloudProvider).toBe("neon");
+    queue.push({ data: [], error: null });
+    await cloud.listPlants("o");
+    expect(neonCreateClient).toHaveBeenCalledWith({
+      auth: { adapter: "adaptador-supabase", url: "https://ep-demo.neonauth.c-2.us-east-2.aws.neon.tech/neondb/auth" },
+      dataApi: { url: "https://ep-demo.apirest.c-2.us-east-2.aws.neon.tech/neondb/rest/v1" },
+    });
+    vi.unstubAllEnvs();
+  });
+
+  it("sin variables de Neon usa Supabase", async () => {
+    vi.stubEnv("VITE_NEON_AUTH_URL", "");
+    vi.stubEnv("VITE_NEON_DATA_API_URL", "");
+    const cloud = await loadCloud();
+    expect(cloud.cloudProvider).toBe("supabase");
+    vi.unstubAllEnvs();
+  });
+});
+
 describe("nube sin configurar", () => {
   it("no carga el cliente y responde con un error claro", async () => {
     vi.stubEnv("VITE_SUPABASE_URL", "");
+    vi.stubEnv("VITE_NEON_AUTH_URL", "");
     vi.resetModules();
     const cloud = await import("@/lib/cloud");
     expect(cloud.isCloudConfigured).toBe(false);

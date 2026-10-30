@@ -7,6 +7,7 @@ import { confidenceLevel } from './ergonomics';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { lastTableY } from '@/lib/pdf';
+import SaveEvaluationButton from '@/components/SGSST/SaveEvaluationButton';
 
 interface Props {
   session: VisionSession;
@@ -128,7 +129,7 @@ const VisionReport: React.FC<Props> = ({ session, operatorName = 'Operario' }) =
       if (y > 200) { doc.addPage(); y = 20; }
       doc.setFontSize(13);
       doc.setTextColor(60, 60, 70);
-      doc.text('Muestras de Sesión (cada 30s)', 14, y);
+      doc.text('Muestras de Sesión (cada 5 s)', 14, y);
       y += 6;
       const sampleStep = Math.max(1, Math.floor(session.snapshots.length / 20));
       const samples = session.snapshots.filter((_, i) => i % sampleStep === 0);
@@ -208,6 +209,7 @@ const VisionReport: React.FC<Props> = ({ session, operatorName = 'Operario' }) =
               CSV
             </button>
           </div>
+          <SaveEvaluationButton session={session} />
         </>
       ) : (
         <p className="text-xs text-muted-foreground text-center py-3">Inicia una sesión para habilitar el exportador.</p>

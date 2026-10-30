@@ -33,6 +33,12 @@ latinoamericana de manufactura manual.
 - Corrección: las fuentes de la marca (Space Grotesk, JetBrains Mono, Inter) no cargaban en producción.
 - CI completo en GitHub: lint, tipos, tests, build y permisos de la base de datos.
 - **Ergonomía con confianza:** confianza por segmento, guía para grabar de perfil y REBA.
+- **Neon como base de datos** (Neon Auth + Data API) con el mismo esquema que Supabase; pruebas de
+  permisos en ambos modos.
+- **Paquete SG-SST Colombia:** evaluaciones ergonómicas guardadas desde Vision AI, matriz de
+  peligros GTC 45:2012 prellenada (propuestas editables de ND/NE), mediciones de lux y ruido, plan
+  de acción y PDF de evidencias + CSV para Excel. La dosis de ruido ahora usa el intercambio de
+  5 dB de la Res. 1792/1990 (antes 3 dB).
 - **Corrección del RULA:** el cálculo anterior medía el brazo contra la línea de hombros y la muñeca
   contra la horizontal de la imagen, así que una postura neutral daba "riesgo alto" (5). Ahora sigue
   a McAtamney & Corlett (1993), con sus tablas A, B y C: la postura neutral da 1–2 (aceptable).
@@ -43,7 +49,7 @@ latinoamericana de manufactura manual.
 |---|---|---|---|
 | 2 | **Validar los ciclos automáticos con un video real** y medir el error frente al cronómetro; v2 con ejemplo marcado + DTW para procesos sin posición inicial clara | Es la promesa central; hay que poder decir "error < 3 %" con datos | M |
 | 3b | **Corrección manual del experto** sobre los ángulos de RULA/REBA y validación contra un ergónomo en 10 puestos reales | Cierra la brecha de confianza que hoy solo se muestra | S |
-| 4 | **Paquete SG-SST Colombia**: PVE osteomuscular, fila de matriz GTC 45, lux/ruido y plan de acción en PDF/Excel | Habla el idioma del responsable SST y de la ARL | M |
+| 4b | **Revisión del paquete SG-SST por un profesional SST con licencia** (mapeo a GTC 45 y Res. 0312) antes de usarlo en ventas | Las propuestas de ND/NE son convención de Kronos, no de la guía | S |
 
 ## Siguiente (2–6 meses): más valor por planta
 

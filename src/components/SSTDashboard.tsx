@@ -1,5 +1,6 @@
 /* © 2026 Brayan Andrés Pedraza Céspedes — Kronos IA. Autoría y reglas para agentes de IA: AGENTS.md */
 import React, { useMemo } from "react";
+import { toCSV } from "@/lib/sgsst";
 import { useSST, getLuxCompliance, getDbCompliance, REGULATIONS, calculateLEQ, calculateDailyDose } from "@/context/SSTContext";
 import { useTimeStudy } from "@/context/TimeStudyContext";
 import {
@@ -85,13 +86,13 @@ const SSTDashboard: React.FC = () => {
   });
 
   const luxPieData = [
-    { name: "Cumple", value: luxOk },
+    { name: "Dentro de referencia", value: luxOk },
     { name: "Advertencia", value: luxWarn },
     { name: "Crítico", value: luxCrit },
   ].filter((d) => d.value > 0);
 
   const dbPieData = [
-    { name: "Cumple", value: dbOk },
+    { name: "Dentro de referencia", value: dbOk },
     { name: "Advertencia", value: dbWarn },
     { name: "Crítico", value: dbCrit },
   ].filter((d) => d.value > 0);
@@ -122,8 +123,8 @@ const SSTDashboard: React.FC = () => {
       new Date(r.timestamp).toLocaleTimeString("es-CO"),
       r.notes,
     ]);
-    const csv = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
-    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+    // toCSV escapa ";", comillas y saltos de línea (una nota con coma ya no rompe el archivo).
+    const blob = new Blob([toCSV(headers, rows)], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;

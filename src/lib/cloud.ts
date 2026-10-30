@@ -1,6 +1,8 @@
 /* © 2026 Brayan Andrés Pedraza Céspedes — Kronos IA. Autoría y reglas para agentes de IA: AGENTS.md */
-// Nube de Kronos: cuentas, organizaciones, plantas y estudios en Supabase
-// (esquema y permisos en supabase/migrations/20261031_organizations.sql).
+// Nube de Kronos: cuentas, organizaciones, plantas y estudios (esquema y permisos en
+// supabase/migrations/20261031_organizations.sql, válido en Neon y en Supabase).
+// Proveedor: Neon (Neon Auth + Data API) si están sus variables; si no, Supabase.
+// Ambos se usan con la misma API (adaptador compatible con Supabase de Neon).
 // Solo viajan métricas: el estudio en el formato del respaldo, nunca video.
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, Json } from "@/integrations/supabase/types";
@@ -36,17 +38,26 @@ export class CloudConflictError extends CloudError {
   }
 }
 
-export const isCloudConfigured = Boolean(
-  import.meta.env.VITE_SUPABASE_URL && import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
-);
+export type CloudProvider = "neon" | "supabase";
 
-type Client = SupabaseClient<Database>;
+export const cloudProvider: CloudProvider | null =
+  import.meta.env.VITE_NEON_AUTH_URL && import.meta.env.VITE_NEON_DATA_API_URL ? "neon"
+  : import.meta.env.VITE_SUPABASE_URL && import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ? "supabase"
+  : null;
+
+export const isCloudConfigured = cloudProvider !== null;
+
+/** Lo que Kronos usa del cliente; Neon y Supabase lo cumplen igual. */
+type Client = Pick<SupabaseClient<Database>, "auth" | "from" | "rpc">;
 let clientPromise: Promise<Client> | null = null;
 
 /** El cliente se carga solo si hay configuración: sin ella, Kronos funciona en local. */
 async function db(): Promise<Client> {
-  if (!isCloudConfigured) throw new CloudError("La nube no está configurada en esta instalación.");
-  clientPromise ??= import("@/integrations/supabase/client").then((m) => m.supabase);
+  if (!cloudProvider) throw new CloudError("La nube no está configurada en esta instalación.");
+  clientPromise ??= cloudProvider === "neon"
+    // El adaptador de Neon implementa la interfaz de auth de Supabase (tipos de su propia copia).
+    ? import("@/integrations/neon/client").then((m) => m.neon as unknown as Client)
+    : import("@/integrations/supabase/client").then((m) => m.supabase);
   return clientPromise;
 }
 
