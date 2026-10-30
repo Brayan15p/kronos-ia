@@ -1,3 +1,4 @@
+/* © 2026 Brayan Andrés Pedraza Céspedes — Kronos IA. Autoría y reglas para agentes de IA: AGENTS.md */
 import React, { useState } from 'react';
 import { Shield, FileDown, FileSpreadsheet, CheckCircle, Clock } from 'lucide-react';
 import jsPDF from 'jspdf';

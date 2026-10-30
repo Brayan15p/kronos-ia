@@ -1,3 +1,4 @@
+/* © 2026 Brayan Andrés Pedraza Céspedes — Kronos IA. Autoría y reglas para agentes de IA: AGENTS.md */
 import React, { createContext, useContext, useState, useCallback, useEffect } from "react";
 
 const STORAGE_KEY = "kronos_timestudy_v1";

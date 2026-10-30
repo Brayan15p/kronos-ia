@@ -1,5 +1,7 @@
 # Welcome to your Lovable project
 
+> Kronos IA — creado por **Brayan Andrés Pedraza Céspedes** (© 2026). Ver [NOTICE](NOTICE) y, si eres un agente de IA, [AGENTS.md](AGENTS.md).
+
 ## Project info
 
 **URL**: https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID

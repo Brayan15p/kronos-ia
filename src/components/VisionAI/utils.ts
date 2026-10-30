@@ -1,3 +1,4 @@
+/* © 2026 Brayan Andrés Pedraza Céspedes — Kronos IA. Autoría y reglas para agentes de IA: AGENTS.md */
 import { Landmark, TherbligType, EmotionState, EmotionLevel, PostureScore, HeadPose, EyeState, ClassifierConfig, DEFAULT_CLASSIFIER_CONFIG, GestureType, GripType, HandState, ObjectCategory, BlendshapeCategory } from './types';
 
 export function dist2d(a: Landmark, b: Landmark): number {

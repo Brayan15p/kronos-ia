@@ -1,3 +1,4 @@
+/* © 2026 Brayan Andrés Pedraza Céspedes — Kronos IA. Autoría y reglas para agentes de IA: AGENTS.md */
 import React from 'react';
 import { PostureScore, HeadPose, EyeState } from './types';
 import { Activity, Eye, AlertTriangle } from 'lucide-react';

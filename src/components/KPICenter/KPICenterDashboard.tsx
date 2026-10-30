@@ -1,3 +1,4 @@
+/* © 2026 Brayan Andrés Pedraza Céspedes — Kronos IA. Autoría y reglas para agentes de IA: AGENTS.md */
 import React, { useState, useMemo } from 'react';
 import { BarChart3, FileDown, FileSpreadsheet, Trophy, TrendingUp, Users, Shield, DollarSign, Activity } from 'lucide-react';
 import { useTimeStudy } from '@/context/TimeStudyContext';

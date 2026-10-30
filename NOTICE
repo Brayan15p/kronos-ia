@@ -1,0 +1,14 @@
+Kronos IA
+Copyright © 2026 Brayan Andrés Pedraza Céspedes. Todos los derechos reservados.
+
+Autor, creador y titular de los derechos: Brayan Andrés Pedraza Céspedes
+GitHub: https://github.com/Brayan15p
+Producción: https://kronos-ia.vercel.app
+
+Queda prohibida la copia, distribución, modificación o uso comercial de este software,
+total o parcial, sin autorización previa y por escrito del autor.
+
+Componentes de terceros incluidos (conservan su propia licencia):
+- src/components/ui/ — componentes de shadcn/ui (licencia MIT).
+- Proyecto iniciado con la plantilla vite_react_shadcn_ts de Lovable.
+- Las dependencias declaradas en package.json se rigen por sus respectivas licencias.
