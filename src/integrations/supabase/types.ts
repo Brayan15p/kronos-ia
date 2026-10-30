@@ -14,16 +14,60 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      organizations: {
+        Row: { id: string; name: string; country: string; created_by: string | null; created_at: string }
+        Insert: { id?: string; name: string; country?: string; created_by?: string | null; created_at?: string }
+        Update: { id?: string; name?: string; country?: string; created_by?: string | null; created_at?: string }
+        Relationships: []
+      }
+      org_members: {
+        Row: { org_id: string; user_id: string; role: Database["public"]["Enums"]["org_role"]; created_at: string }
+        Insert: { org_id: string; user_id: string; role?: Database["public"]["Enums"]["org_role"]; created_at?: string }
+        Update: { org_id?: string; user_id?: string; role?: Database["public"]["Enums"]["org_role"]; created_at?: string }
+        Relationships: []
+      }
+      plants: {
+        Row: { id: string; org_id: string; name: string; city: string; created_at: string }
+        Insert: { id?: string; org_id: string; name: string; city?: string; created_at?: string }
+        Update: { id?: string; org_id?: string; name?: string; city?: string; created_at?: string }
+        Relationships: []
+      }
+      studies: {
+        Row: {
+          id: string; org_id: string; plant_id: string | null; name: string; station: string; data: Json
+          cycle_count: number; version: number; created_by: string | null; created_at: string
+          updated_by: string | null; updated_at: string
+        }
+        Insert: {
+          id?: string; org_id: string; plant_id?: string | null; name: string; station?: string; data: Json
+          cycle_count?: number; version?: number; created_by?: string | null; created_at?: string
+          updated_by?: string | null; updated_at?: string
+        }
+        Update: {
+          id?: string; org_id?: string; plant_id?: string | null; name?: string; station?: string; data?: Json
+          cycle_count?: number; version?: number; created_by?: string | null; created_at?: string
+          updated_by?: string | null; updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      create_organization: { Args: { p_name: string; p_country?: string }; Returns: string }
+      add_member_by_email: {
+        Args: { p_org: string; p_email: string; p_role?: Database["public"]["Enums"]["org_role"] }
+        Returns: undefined
+      }
+      list_org_members: {
+        Args: { p_org: string }
+        Returns: { user_id: string; email: string; role: Database["public"]["Enums"]["org_role"]; created_at: string }[]
+      }
+      org_role_of: { Args: { p_org: string }; Returns: Database["public"]["Enums"]["org_role"] }
     }
     Enums: {
-      [_ in never]: never
+      org_role: "owner" | "editor" | "viewer"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +194,8 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      org_role: ["owner", "editor", "viewer"],
+    },
   },
 } as const

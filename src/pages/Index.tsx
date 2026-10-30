@@ -4,7 +4,7 @@ import {
   Timer, ClipboardCheck, AlertTriangle, BarChart3, FileDown,
   Trash2, DollarSign, Dice5, Brain, TrendingUp, Plus, X,
   Zap, ChevronLeft, ChevronRight, Settings2, PenLine,
-  Eye, Shield, Activity, ScanEye, Loader2, Download, Upload,
+  Eye, Shield, Activity, ScanEye, Loader2, Download, Upload, Cloud,
 } from "lucide-react";
 import { toast } from "sonner";
 import { parseStudy, serializeStudy, StudyBackupError } from "@/lib/studyBackup";
@@ -31,8 +31,9 @@ const ErgonomicCostAnalysis = lazy(() => import("@/components/ErgonomicCostAnaly
 const SSTRecommendations = lazy(() => import("@/components/SSTRecommendations"));
 const VisionAIDashboard = lazy(() => import("@/components/VisionAI/VisionAIDashboard"));
 const KPICenterDashboard = lazy(() => import("@/components/KPICenter/KPICenterDashboard"));
+const CloudWorkspace = lazy(() => import("@/components/Cloud/CloudWorkspace"));
 
-type TabId = "timer" | "manual" | "steps" | "cost" | "montecarlo" | "dashboard" | "fatigue" | "quality" | "defects" | "optimizer" | "incentives" | "report" | "environment" | "workspace3d" | "sst-dashboard" | "ergo-cost" | "sst-ai" | "vision-ai" | "kpi-center";
+type TabId = "timer" | "manual" | "steps" | "cost" | "montecarlo" | "dashboard" | "fatigue" | "quality" | "defects" | "optimizer" | "incentives" | "report" | "environment" | "workspace3d" | "sst-dashboard" | "ergo-cost" | "sst-ai" | "vision-ai" | "kpi-center" | "cloud";
 
 // Navegación por tarea: medir → analizar → mejorar → reportar, con SST como vertical propia.
 const TABS: { id: TabId; label: string; icon: React.ElementType; category: string }[] = [
@@ -55,6 +56,7 @@ const TABS: { id: TabId; label: string; icon: React.ElementType; category: strin
   { id: "sst-ai", label: "Motor IA", icon: Brain, category: "Ergonomía y SST" },
   { id: "dashboard", label: "Dashboard", icon: BarChart3, category: "Reportar" },
   { id: "report", label: "Reporte PDF", icon: FileDown, category: "Reportar" },
+  { id: "cloud", label: "Nube y equipo", icon: Cloud, category: "Equipo" },
 ];
 
 const isTabId = (v: string): v is TabId => TABS.some((t) => t.id === v);
@@ -306,6 +308,7 @@ const AppContent: React.FC = () => {
             {activeTab === "incentives" && <IncentivesModule />}
             {activeTab === "dashboard" && <Dashboard />}
             {activeTab === "report" && <div className="max-w-3xl mx-auto"><PDFReport /></div>}
+            {activeTab === "cloud" && <CloudWorkspace />}
             </Suspense>
           </div>
         </main>

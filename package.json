@@ -14,7 +14,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "authorship": "node scripts/authorship.mjs",
-    "authorship:fix": "node scripts/authorship.mjs --fix"
+    "authorship:fix": "node scripts/authorship.mjs --fix",
+    "test:db": "bash scripts/test-db.sh",
+    "test:e2e:cloud": "node scripts/e2e-cloud.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",

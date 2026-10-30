@@ -3,7 +3,8 @@
 @tailwind components;
 @tailwind utilities;
 
-@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap');
+/* Las fuentes (Space Grotesk, JetBrains Mono, Inter) se cargan desde index.html: un @import
+   después de las directivas de Tailwind queda fuera del inicio del CSS y el navegador lo ignora. */
 
 @layer base {
   :root {
