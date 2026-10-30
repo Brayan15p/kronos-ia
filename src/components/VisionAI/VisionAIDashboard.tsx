@@ -1,6 +1,6 @@
 /* © 2026 Brayan Andrés Pedraza Céspedes — Kronos IA. Autoría y reglas para agentes de IA: AGENTS.md */
 import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
-import { Play, Square, Eye, EyeOff, RotateCcw, Cpu, Activity } from 'lucide-react';
+import { Play, Square, Eye, EyeOff, RotateCcw, Cpu, Activity, ScanFace } from 'lucide-react';
 import CameraFeed from './CameraFeed';
 import TherbligPanel from './TherbligPanel';
 import EmotionEngine from './EmotionEngine';
@@ -18,6 +18,7 @@ import { classifyTherbligContextual, calculateRULA, analyzeEmotionEnhanced, THER
 
 const SNAPSHOT_INTERVAL = 5000;
 const CONFIG_STORAGE_KEY = 'kronos_vision_config_v1';
+const FACE_ANALYSIS_KEY  = 'kronos_vision_face_v1';
 
 const VisionAIDashboard: React.FC = () => {
   const [isActive,      setIsActive]      = useState(false);
@@ -52,6 +53,35 @@ const VisionAIDashboard: React.FC = () => {
     }
   });
   const configRef = useRef<ClassifierConfig>(classifierConfig);
+
+  // Análisis facial (atención/fatiga): el rostro es un dato biométrico, así que se puede
+  // apagar cuando el operario no lo haya autorizado. La preferencia persiste entre sesiones.
+  const [faceAnalysis, setFaceAnalysis] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem(FACE_ANALYSIS_KEY) !== 'off';
+    } catch {
+      return true;
+    }
+  });
+  const faceAnalysisRef = useRef(faceAnalysis);
+
+  const toggleFaceAnalysis = useCallback(() => {
+    setFaceAnalysis(prev => {
+      const next = !prev;
+      faceAnalysisRef.current = next;
+      try {
+        localStorage.setItem(FACE_ANALYSIS_KEY, next ? 'on' : 'off');
+      } catch {
+        /* almacenamiento no disponible */
+      }
+      if (!next) {
+        setCurrentEmotion(null); setCurrentHead(null); setCurrentEyes(null);
+        setEmotionHistory([]);
+        currentEmotRef.current = null;
+      }
+      return next;
+    });
+  }, []);
 
   // Refs for frame-level logic (no stale closures)
   const leftVelRef    = useRef({ x: 0, y: 0 });
@@ -187,7 +217,7 @@ const VisionAIDashboard: React.FC = () => {
     processHand(rh, lh, rightVelRef, rightSmoothVel, rightFrameRef, lastRightRef, 'right', setCurrentRightT, t => { currentTRef.current.r = t; });
 
     // ── Face/emotion (blendshapes when available, landmark fallback) ──
-    if (face) {
+    if (face && faceAnalysisRef.current) {
       const { emotion, head, eyes } = analyzeEmotionEnhanced(face as any, results.faceBlendshapes, configRef.current);
       setCurrentEmotion(emotion);
       setCurrentHead(head);
@@ -262,6 +292,15 @@ const VisionAIDashboard: React.FC = () => {
               <span className="text-xs font-bold text-red-400">⚠️ SOMNOLENCIA</span>
             </div>
           )}
+          <button
+            onClick={toggleFaceAnalysis}
+            className="btn-secondary-glass flex items-center gap-1.5 text-xs"
+            title="El análisis facial usa datos biométricos: actívalo con autorización del operario (Ley 1581 de 2012)."
+            aria-pressed={faceAnalysis}
+          >
+            <ScanFace className="w-3.5 h-3.5" />
+            {faceAnalysis ? 'Rostro: activo' : 'Rostro: apagado'}
+          </button>
           <button onClick={() => setShowSkeleton(s => !s)} className="btn-secondary-glass flex items-center gap-1.5 text-xs">
             {showSkeleton ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
             {showSkeleton ? 'Ocultar' : 'Skeleton'}
@@ -313,7 +352,13 @@ const VisionAIDashboard: React.FC = () => {
 
         {/* Right panels (1/3 width) */}
         <div className="space-y-4">
-          <EmotionEngine current={currentEmotion} history={emotionHistory} />
+          {faceAnalysis ? (
+            <EmotionEngine current={currentEmotion} history={emotionHistory} />
+          ) : (
+            <div className="glass-card p-4 text-xs text-muted-foreground">
+              Análisis facial apagado. La postura, los therbligs y los tiempos siguen midiéndose.
+            </div>
+          )}
           <PostureAnalyzer posture={currentPosture} head={currentHead} eyes={currentEyes} />
           <CalibrationPanel config={classifierConfig} onChange={handleConfigChange} />
           <VirtualObjectSim selected={virtualObject} onChange={setVirtualObject} hasHand={hasHand} />
