@@ -14,6 +14,7 @@ import ExpertReviewPanel from './ExpertReviewPanel';
 import { isWorsePosture, type ExpertReview } from './expertReview';
 import { toast } from 'sonner';
 import { CycleDetector, handsCentroid, type CycleDetectorState, type DetectedCycle, type Point } from '@/lib/cycleDetector';
+import { frameFeature, type Feature, type FeatureFrame } from '@/lib/stepRecognition';
 import {
   VisionResults, VirtualObjectType, TherbligEvent, TherbligType,
   EmotionState, PostureScore, HeadPose, EyeState, VisionSession,
@@ -21,6 +22,8 @@ import {
 } from './types';
 import { classifyTherbligContextual, calculateRULA, analyzeEmotionEnhanced, THERBLIG_INFO, ema } from './utils';
 
+/** Minutos de trayectoria que se guardan para reconocer los pasos (15 min). */
+const FEATURE_WINDOW_MS = 15 * 60 * 1000;
 const SNAPSHOT_INTERVAL = 5000;
 const CONFIG_STORAGE_KEY = 'kronos_vision_config_v2';
 // v1 guardaba el rigor RULA en la escala anterior (por defecto 1.1), que ya no significa lo mismo.
@@ -87,6 +90,11 @@ const VisionAIDashboard: React.FC = () => {
   const recentHandsRef   = useRef<Point[]>([]);
   const [cycleStatus,    setCycleStatus]    = useState<CycleDetectorState>('uncalibrated');
   const [detectedCycles, setDetectedCycles] = useState<DetectedCycle[]>([]);
+  // Trayectoria de las muñecas de los últimos minutos: base para reconocer los pasos de cada ciclo.
+  const featureFramesRef = useRef<FeatureFrame[]>([]);
+  const lastFeatureRef   = useRef<Feature | null>(null);
+  const getFrames = useCallback((from: number, to: number) =>
+    featureFramesRef.current.filter(f => f.t >= from && f.t <= to), []);
 
   const handleCalibrateCycles = useCallback(() => {
     const recent = recentHandsRef.current;
@@ -184,6 +192,7 @@ const VisionAIDashboard: React.FC = () => {
     cycleDetectorRef.current.reset();
     setCycleStatus('uncalibrated'); setDetectedCycles([]);
     therbligRef.current = []; snapshotRef.current = [];
+    featureFramesRef.current = []; lastFeatureRef.current = null;
     criticalPostureRef.current = null;
     setCriticalPosture(null);
     setExpertReview(null);
@@ -200,6 +209,13 @@ const VisionAIDashboard: React.FC = () => {
     const hands = handsCentroid([lh?.[0], rh?.[0]]);
     if (hands) recentHandsRef.current = [...recentHandsRef.current.slice(-14), hands];
     const detector = cycleDetectorRef.current;
+    const feature = frameFeature(lh?.[0], rh?.[0], pose?.[11], pose?.[12], lastFeatureRef.current);
+    if (feature) {
+      lastFeatureRef.current = feature;
+      const buf = featureFramesRef.current;
+      buf.push({ t: now, f: feature });
+      while (buf.length && buf[0].t < now - FEATURE_WINDOW_MS) buf.shift();
+    }
     const closed = detector.update(now, hands);
     if (closed) setDetectedCycles(p => [...p, closed]);
     setCycleStatus(prev => (prev === detector.status ? prev : detector.status));
@@ -425,6 +441,7 @@ const VisionAIDashboard: React.FC = () => {
             isActive={isActive}
             onCalibrate={handleCalibrateCycles}
             onClear={() => setDetectedCycles([])}
+            getFrames={getFrames}
           />
           <CalibrationPanel config={classifierConfig} onChange={handleConfigChange} />
           <VirtualObjectSim selected={virtualObject} onChange={setVirtualObject} hasHand={hasHand} />

@@ -5,7 +5,8 @@
 //
 // Convenciones de Kronos (no de una norma):
 // - El orden estándar es el orden de los pasos configurados.
-// - "Omitido" solo cuando el observador lo marcó (modo secuencia observada). Un paso sin tiempo
+// - "Omitido" cuando el observador lo marcó (modo secuencia observada) o lo detectó Vision AI con el
+//   método aprendido (se distingue en la interfaz). Un paso sin tiempo
 //   en medio del ciclo es "sin registro" (posible omisión): puede ser un olvido del observador.
 //   Si faltan solo los últimos pasos, el ciclo se guardó a medias y no se cuenta como desviación.
 // - "Muy corto": dura menos del 25 % de la mediana del paso (mediana ≥ 2 s y ≥ 5 lecturas).
@@ -49,6 +50,8 @@ export interface CycleSequence {
   cycleNumber: number;
   /** El ciclo se registró con el modo de secuencia observada (el orden es el real). */
   observedOrder: boolean;
+  /** Los pasos y omisiones los reconoció Vision AI (detección automática, no un observador). */
+  fromVision: boolean;
   tokens: SequenceToken[];
   deviations: Deviation[];
   /** Tiene alguna desviación confirmada (omitido, fuera de orden, repetido o muy corto). */
@@ -197,6 +200,7 @@ export function analyzeCycle(
     operatorName: cycle.operatorName,
     cycleNumber: cycle.cycleNumber,
     observedOrder: cycle.sequenceMode === "observada",
+    fromVision: cycle.stepsSource === "vision",
     tokens,
     deviations,
     deviated: deviations.some((d) => CONFIRMED.includes(d.kind)),
@@ -289,6 +293,8 @@ export interface SequenceReport {
   conformingRate: number;
   /** Cuántos ciclos se registraron con el orden real (modo secuencia observada). */
   observedOrderCycles: number;
+  /** Cuántos ciclos traen pasos reconocidos por Vision AI. */
+  visionCycles: number;
   overall: Association;
   steps: StepSequenceStats[];
   operators: OperatorSequenceStats[];
@@ -356,6 +362,7 @@ export function buildSequenceReport(steps: StepConfig[], cycles: CycleRecord[], 
     deviated: deviated.length,
     conformingRate: usable.length ? conforming / usable.length : 0,
     observedOrderCycles: analyzed.filter((a) => a.observedOrder).length,
+    visionCycles: analyzed.filter((a) => a.fromVision).length,
     overall,
     steps: stepStats,
     operators,

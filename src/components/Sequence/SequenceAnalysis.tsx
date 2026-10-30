@@ -74,20 +74,20 @@ const SequenceAnalysis: React.FC = () => {
         </div>
       </div>
 
-      {report.observedOrderCycles === 0 && (
+      {report.observedOrderCycles === 0 && report.visionCycles === 0 && (
         <div className="glass-card p-4 flex items-start gap-3 border-primary/30">
           <Shuffle className="w-5 h-5 text-primary flex-shrink-0" />
           <p className="text-sm text-foreground">
-            Ningún ciclo se registró con <strong>Secuencia observada</strong>. El cronómetro normal sigue el orden estándar, así
-            que aquí solo pueden aparecer pasos muy cortos, repetidos o sin tiempo. Actívala en el Cronómetro para registrar el
-            orden real y las omisiones.
+            Ningún ciclo se registró con <strong>Secuencia observada</strong> ni con pasos de Vision AI. El cronómetro normal sigue
+            el orden estándar, así que aquí solo pueden aparecer pasos muy cortos, repetidos o sin tiempo. Actívala en el
+            Cronómetro, o enseña el método en Vision AI, para registrar las omisiones.
           </p>
         </div>
       )}
 
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
         {[
-          { label: "Ciclos revisados", value: String(usable), hint: `${report.observedOrderCycles} con secuencia observada` },
+          { label: "Ciclos revisados", value: String(usable), hint: `${report.observedOrderCycles} con secuencia observada · ${report.visionCycles} por Vision AI` },
           { label: "Siguen el método", value: usable ? pct(report.conformingRate) : "—", hint: `${report.conforming} de ${usable} ciclos` },
           { label: "Con desviaciones", value: String(report.deviated), hint: "Omitido, fuera de orden, repetido o muy corto" },
           { label: "Defectos si se desvían", value: report.deviated ? pct(report.overall.rateWith) : "—", hint: `${report.overall.withDevDefective} de ${report.overall.withDev} ciclos` },
@@ -202,6 +202,7 @@ const SequenceAnalysis: React.FC = () => {
                   <span className="text-foreground">{a.operatorName}</span>
                   {a.defective && <span className="px-1.5 py-0.5 rounded bg-destructive/10 text-destructive text-[10px]">con defecto</span>}
                   {a.observedOrder && <span className="px-1.5 py-0.5 rounded bg-primary/10 text-primary text-[10px]">secuencia observada</span>}
+                  {a.fromVision && <span className="px-1.5 py-0.5 rounded bg-accent/10 text-accent text-[10px]">Vision AI</span>}
                 </div>
                 <SequenceChips seq={a} />
                 {a.deviations.length > 0 && (
