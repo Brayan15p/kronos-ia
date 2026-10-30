@@ -148,7 +148,7 @@ const OptimizerAI: React.FC = () => {
     });
 
     return result;
-  }, [cycles, defects, qualityChecks, operators, costConfig]);
+  }, [cycles, defects, qualityChecks, operators, costConfig, CRANE_STEPS]);
 
   const isUnlocked = cycles.length >= 10;
 

@@ -9,6 +9,9 @@ import ExpertComparison from './ExpertComparison';
 import VirtualObjectSim from './VirtualObjectSim';
 import VisionReport from './VisionReport';
 import CalibrationPanel from './CalibrationPanel';
+import AutoCyclePanel from './AutoCyclePanel';
+import { toast } from 'sonner';
+import { CycleDetector, handsCentroid, type CycleDetectorState, type DetectedCycle, type Point } from '@/lib/cycleDetector';
 import {
   VisionResults, VirtualObjectType, TherbligEvent, TherbligType,
   EmotionState, PostureScore, HeadPose, EyeState, VisionSession,
@@ -64,6 +67,25 @@ const VisionAIDashboard: React.FC = () => {
     }
   });
   const faceAnalysisRef = useRef(faceAnalysis);
+
+  // Detección automática de ciclos: el detector vive en un ref (se alimenta en cada fotograma)
+  // y solo su estado visible y los ciclos cerrados pasan a React.
+  const cycleDetectorRef = useRef(new CycleDetector());
+  const recentHandsRef   = useRef<Point[]>([]);
+  const [cycleStatus,    setCycleStatus]    = useState<CycleDetectorState>('uncalibrated');
+  const [detectedCycles, setDetectedCycles] = useState<DetectedCycle[]>([]);
+
+  const handleCalibrateCycles = useCallback(() => {
+    const recent = recentHandsRef.current;
+    if (recent.length < 5) {
+      toast.error('No veo las manos: colócalas frente a la cámara y vuelve a intentarlo.');
+      return;
+    }
+    cycleDetectorRef.current.setHome(handsCentroid(recent)!);
+    setCycleStatus('home');
+    setDetectedCycles([]);
+    toast.success('Posición inicial marcada. Ya se cuentan los ciclos.');
+  }, []);
 
   const toggleFaceAnalysis = useCallback(() => {
     setFaceAnalysis(prev => {
@@ -143,6 +165,8 @@ const VisionAIDashboard: React.FC = () => {
     setCurrentHead(null); setCurrentEyes(null);
     setTherbligHistory([]); setEmotionHistory([]);
     setSessionSeconds(0);
+    cycleDetectorRef.current.reset();
+    setCycleStatus('uncalibrated'); setDetectedCycles([]);
     therbligRef.current = []; snapshotRef.current = [];
     setSession({ startTime: Date.now(), endTime: null, snapshots: [], therbligs: [] });
   };
@@ -152,6 +176,14 @@ const VisionAIDashboard: React.FC = () => {
     const { leftHandLandmarks: lh, rightHandLandmarks: rh, faceLandmarks: face, poseLandmarks: pose } = results;
 
     setHasHand(!!(lh || rh));
+
+    // ── Ciclos automáticos (muñeca = landmark 0 de cada mano) ──
+    const hands = handsCentroid([lh?.[0], rh?.[0]]);
+    if (hands) recentHandsRef.current = [...recentHandsRef.current.slice(-14), hands];
+    const detector = cycleDetectorRef.current;
+    const closed = detector.update(now, hands);
+    if (closed) setDetectedCycles(p => [...p, closed]);
+    setCycleStatus(prev => (prev === detector.status ? prev : detector.status));
 
     // ── Hand/Therblig processing ──
     function processHand(
@@ -185,7 +217,7 @@ const VisionAIDashboard: React.FC = () => {
       const gesture       = side === 'left' ? (results.leftGesture  ?? null) : (results.rightGesture  ?? null);
       const gestureScore  = side === 'left' ? (results.leftGestureScore ?? 0) : (results.rightGestureScore ?? 0);
       const hasObj        = !!(side === 'left' ? results.leftObjectInHand : results.rightObjectInHand);
-      const candidate = classifyTherbligContextual(hand as any, other as any, smoothRef.current, gesture, gestureScore, hasObj, configRef.current);
+      const candidate = classifyTherbligContextual(hand, other, smoothRef.current, gesture, gestureScore, hasObj, configRef.current);
 
       if (!frameRef.current || frameRef.current.type !== candidate) {
         frameRef.current = { type: candidate, count: 1, firstSeen: now };
@@ -218,7 +250,7 @@ const VisionAIDashboard: React.FC = () => {
 
     // ── Face/emotion (blendshapes when available, landmark fallback) ──
     if (face && faceAnalysisRef.current) {
-      const { emotion, head, eyes } = analyzeEmotionEnhanced(face as any, results.faceBlendshapes, configRef.current);
+      const { emotion, head, eyes } = analyzeEmotionEnhanced(face, results.faceBlendshapes, configRef.current);
       setCurrentEmotion(emotion);
       setCurrentHead(head);
       setCurrentEyes(eyes);
@@ -229,7 +261,7 @@ const VisionAIDashboard: React.FC = () => {
 
     // ── Posture ──
     if (pose) {
-      const ps = calculateRULA(pose as any, configRef.current.rulaStrictness);
+      const ps = calculateRULA(pose, configRef.current.rulaStrictness);
       setCurrentPosture(ps);
       currentPostureRef.current = ps;
     }
@@ -360,6 +392,13 @@ const VisionAIDashboard: React.FC = () => {
             </div>
           )}
           <PostureAnalyzer posture={currentPosture} head={currentHead} eyes={currentEyes} />
+          <AutoCyclePanel
+            status={cycleStatus}
+            cycles={detectedCycles}
+            isActive={isActive}
+            onCalibrate={handleCalibrateCycles}
+            onClear={() => setDetectedCycles([])}
+          />
           <CalibrationPanel config={classifierConfig} onChange={handleConfigChange} />
           <VirtualObjectSim selected={virtualObject} onChange={setVirtualObject} hasHand={hasHand} />
         </div>

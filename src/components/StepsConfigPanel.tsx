@@ -1,12 +1,26 @@
 /* © 2026 Brayan Andrés Pedraza Céspedes — Kronos IA. Autoría y reglas para agentes de IA: AGENTS.md */
 import React, { useState } from "react";
-import { Plus, Trash2, Edit2, Check, X, Settings2 } from "lucide-react";
+import { Plus, Trash2, Edit2, Check, X, Settings2, LayoutTemplate } from "lucide-react";
 import { useTimeStudy } from "@/context/TimeStudyContext";
+import { PROCESS_TEMPLATES, TEMPLATE_EMOJIS } from "@/lib/processTemplates";
 
-const EMOJI_OPTIONS = ["✂️", "📐", "🔲", "🔺", "🔻", "🌸", "🦢", "🪶", "👑", "🕊️", "⚙️", "🔧", "📏", "🎯", "🔩", "📦", "🧪", "✅"];
+const EMOJI_OPTIONS = [...new Set(["✂️", "📐", "🔲", "🔺", "🔻", "🌸", "🦢", "🪶", "👑", "🕊️", "⚙️", "🔧", "📏", "🎯", "🔩", "📦", "🧪", "✅", ...TEMPLATE_EMOJIS])];
 
 const StepsConfigPanel: React.FC = () => {
-  const { steps, addStep, removeStep, updateStep } = useTimeStudy();
+  const { steps, addStep, removeStep, updateStep, applyTemplate, cycles } = useTimeStudy();
+  const [templateId, setTemplateId] = useState("");
+
+  const handleApplyTemplate = () => {
+    const template = PROCESS_TEMPLATES.find((t) => t.id === templateId);
+    if (!template) return;
+    // Los ciclos ya registrados se conservan, pero sus pasos pueden dejar de coincidir.
+    if (cycles.length > 0 && !window.confirm(
+      `Se reemplazarán los ${steps.length} pasos actuales por "${template.name}". ` +
+      `Tienes ${cycles.length} ciclos registrados con los pasos actuales. ¿Continuar?`,
+    )) return;
+    applyTemplate(template);
+    setTemplateId("");
+  };
   const [newName, setNewName] = useState("");
   const [newEmoji, setNewEmoji] = useState("⚙️");
   const [editingStep, setEditingStep] = useState<number | null>(null);
@@ -40,6 +54,27 @@ const StepsConfigPanel: React.FC = () => {
           <p className="text-sm font-display font-bold text-foreground">Configurar Pasos del Proceso</p>
           <p className="text-xs text-muted-foreground">Agrega, edita o elimina pasos. Actualmente: {steps.length} pasos</p>
         </div>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2 p-3 rounded-lg bg-muted/20 border border-border/30">
+        <LayoutTemplate className="w-4 h-4 text-primary flex-shrink-0" />
+        <label htmlFor="process-template" className="text-xs text-muted-foreground">Partir de una plantilla</label>
+        <select
+          id="process-template"
+          value={templateId}
+          onChange={(e) => setTemplateId(e.target.value)}
+          className="input-glass flex-1 min-w-[12rem] text-sm py-1.5"
+        >
+          <option value="">Elegir proceso…</option>
+          {PROCESS_TEMPLATES.map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.sector} · {t.name} ({t.steps.length} pasos, objetivo {t.targetCycleTime}s)
+            </option>
+          ))}
+        </select>
+        <button onClick={handleApplyTemplate} disabled={!templateId} className="btn-secondary-glass text-xs disabled:opacity-40">
+          Cargar
+        </button>
       </div>
 
       <div className="space-y-1 max-h-72 overflow-y-auto scroll-thin">

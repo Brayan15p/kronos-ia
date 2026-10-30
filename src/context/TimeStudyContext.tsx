@@ -1,41 +1,17 @@
 /* © 2026 Brayan Andrés Pedraza Céspedes — Kronos IA. Autoría y reglas para agentes de IA: AGENTS.md */
 import React, { createContext, useContext, useState, useCallback, useEffect } from "react";
+import { parseStudy, type StudyData } from "@/lib/studyBackup";
+import type { ProcessTemplate } from "@/lib/processTemplates";
 
 const STORAGE_KEY = "kronos_timestudy_v1";
 
-interface PersistedState {
-  steps: StepConfig[];
-  operators: OperatorConfig[];
-  cycles: CycleRecord[];
-  defects: DefectRecord[];
-  qualityChecks: QualityCheck[];
-  costConfig: CostConfig;
-}
-
-/** Carga el estudio guardado, reviviendo los campos de fecha a objetos Date. */
-function loadPersisted(): Partial<PersistedState> | null {
+/** Carga el estudio guardado en este navegador, reviviendo las fechas. */
+function loadPersisted(): StudyData | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return null;
-    const d = JSON.parse(raw) as any;
-    if (Array.isArray(d.cycles)) {
-      d.cycles = d.cycles.map((c: any) => ({
-        ...c,
-        timestamp: new Date(c.timestamp),
-        steps: Array.isArray(c.steps)
-          ? c.steps.map((s: any) => ({ ...s, timestamp: new Date(s.timestamp) }))
-          : [],
-      }));
-    }
-    if (Array.isArray(d.defects)) {
-      d.defects = d.defects.map((x: any) => ({ ...x, timestamp: new Date(x.timestamp) }));
-    }
-    if (Array.isArray(d.qualityChecks)) {
-      d.qualityChecks = d.qualityChecks.map((x: any) => ({ ...x, timestamp: new Date(x.timestamp) }));
-    }
-    return d as Partial<PersistedState>;
+    return raw ? parseStudy(raw) : null;
   } catch {
-    return null;
+    return null; // almacenamiento no disponible o datos dañados: se arranca con un estudio nuevo
   }
 }
 
@@ -133,6 +109,10 @@ interface TimeStudyState {
   updateCostConfig: (config: Partial<CostConfig>) => void;
   clearAll: () => void;
   importCycles: (cycles: CycleRecord[]) => void;
+  /** Sustituye el estudio completo (restaurar un respaldo). */
+  replaceStudy: (data: StudyData) => void;
+  /** Carga los pasos y el tiempo objetivo de una plantilla de proceso. */
+  applyTemplate: (template: ProcessTemplate) => void;
 }
 
 const TimeStudyContext = createContext<TimeStudyState | null>(null);
@@ -245,6 +225,20 @@ export const TimeStudyProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     setCycles((prev) => [...prev, ...newCycles]);
   }, []);
 
+  const replaceStudy = useCallback((data: StudyData) => {
+    setSteps(data.steps);
+    setOperators(data.operators);
+    setCycles(data.cycles);
+    setDefects(data.defects);
+    setQualityChecks(data.qualityChecks);
+    setCostConfig(data.costConfig);
+  }, []);
+
+  const applyTemplate = useCallback((template: ProcessTemplate) => {
+    setSteps(template.steps.map((s) => ({ ...s })));
+    setCostConfig((prev) => ({ ...prev, targetCycleTime: template.targetCycleTime }));
+  }, []);
+
   return (
     <TimeStudyContext.Provider
       value={{
@@ -253,6 +247,7 @@ export const TimeStudyProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         addOperator, removeOperator, updateOperator,
         addCycle, removeCycle, updateCycle,
         addDefect, addQualityCheck, updateCostConfig, clearAll, importCycles,
+        replaceStudy, applyTemplate,
       }}
     >
       {children}

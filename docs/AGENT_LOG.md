@@ -8,3 +8,4 @@ Para ver los commits de cada agente: `git log --grep="^Agent:"` o `git log --for
 | Fecha | Agente | Rama | Cambio |
 |---|---|---|---|
 | 2026-10-30 | Claude Code | `claude-code/upbeat-mccarthy-urf0ml` | Encabezados de autoría, AGENTS.md, CLAUDE.md, NOTICE, AUTHORS, CODEOWNERS, registro de agentes y verificación en CI |
+| 2026-10-30 | Claude Code | `claude-code/upbeat-mccarthy-urf0ml` | Seguridad (endpoint de IA, RLS en Supabase), ciclos automáticos en Vision AI, plantillas de proceso, respaldo del estudio, navegación por tarea, carga bajo demanda, lint y tests, investigación de mercado y hoja de ruta |
