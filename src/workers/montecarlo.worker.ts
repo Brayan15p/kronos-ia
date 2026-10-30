@@ -14,7 +14,7 @@ const NI_C0 = 0.3374754822726147, NI_C1 = 0.9761690190917186,
       NI_C6 = 0.0000321767881768, NI_C7 = 0.0000002888167364,
       NI_C8 = 0.0000003960315187;
 
-function normalInv(p: number): number {
+export function normalInv(p: number): number {
   if (p <= 0) return -8; if (p >= 1) return 8;
   const x = p - 0.5;
   if (Math.abs(x) < 0.42) {
@@ -27,7 +27,7 @@ function normalInv(p: number): number {
   return p < 0.5 ? -y : y;
 }
 
-function normalCDF(z: number): number {
+export function normalCDF(z: number): number {
   const t = 1 / (1 + 0.2316419 * Math.abs(z));
   const d = 0.3989422804014327 * Math.exp(-(z * z) / 2);
   const p = d*t*(0.31938153+t*(-0.356563782+t*(1.781477937+t*(-1.821255978+t*1.330274429))));
@@ -35,7 +35,7 @@ function normalCDF(z: number): number {
 }
 
 // LHS usando Float64Array — más rápido que Array normal, sin GC
-function lhsSample(N: number): Float64Array {
+export function lhsSample(N: number): Float64Array {
   const u = new Float64Array(N);
   for (let i = 0; i < N; i++) u[i] = (i + Math.random()) / N;
   for (let i = N - 1; i > 0; i--) {
@@ -45,7 +45,7 @@ function lhsSample(N: number): Float64Array {
   return u;
 }
 
-function antitheticLHS(N: number): Float64Array {
+export function antitheticLHS(N: number): Float64Array {
   const half = Math.ceil(N / 2);
   const base = lhsSample(half);
   const out = new Float64Array(N);
@@ -60,13 +60,13 @@ function antitheticLHS(N: number): Float64Array {
 // Convergencia O((log N)^d / N) vs O(1/√N) del MC clásico.
 // Con 1.000 puntos Halton cubre el espacio como ~10.000 MC puro.
 // Referencia: Halton (1960), Numer. Math. 2: 84-90; Faure & Lemieux (2009).
-function haltonSingle(index: number, base: number): number {
+export function haltonSingle(index: number, base: number): number {
   let f = 1, r = 0, i = index + 1; // 1-indexed (evita 0)
   while (i > 0) { f /= base; r += f * (i % base); i = Math.floor(i / base); }
   return r;
 }
 
-function haltonQMC(N: number): Float64Array {
+export function haltonQMC(N: number): Float64Array {
   const u = new Float64Array(N);
   // Scramble aleatorio: desplaza la secuencia para evitar correlación de red
   const offset = Math.random();
@@ -76,7 +76,7 @@ function haltonQMC(N: number): Float64Array {
   return u;
 }
 
-function pertSample(u: number, a: number, m: number, b: number): number {
+export function pertSample(u: number, a: number, m: number, b: number): number {
   if (b <= a) return m;
   const mu = (a + 4 * m + b) / 6;
   const alpha = 6 * (mu - a) / Math.max(1e-9, b - a);
@@ -87,7 +87,7 @@ function pertSample(u: number, a: number, m: number, b: number): number {
   return a + Math.max(0, Math.min(1, xn)) * (b - a);
 }
 
-function andersonDarling(sorted: Float64Array | number[], cdf: (x: number) => number): number {
+export function andersonDarling(sorted: Float64Array | number[], cdf: (x: number) => number): number {
   const N = sorted.length; if (N < 4) return 999;
   let S = 0;
   for (let i = 0; i < N; i++) {
@@ -98,11 +98,11 @@ function andersonDarling(sorted: Float64Array | number[], cdf: (x: number) => nu
   return -N - S / N;
 }
 
-function adNormal(s: number[], mean: number, std: number) {
+export function adNormal(s: number[], mean: number, std: number) {
   if (std <= 0) return 999;
   return andersonDarling(s, x => normalCDF((x-mean)/std));
 }
-function adLogNormal(s: number[]) {
+export function adLogNormal(s: number[]) {
   const xs = s.filter(x => x > 0); if (xs.length < 4) return 999;
   const logs = xs.map(x => Math.log(x));
   const mu = logs.reduce((a,b)=>a+b,0)/xs.length;
@@ -110,7 +110,7 @@ function adLogNormal(s: number[]) {
   if (sd <= 0) return 999;
   return andersonDarling(xs, x => x<=0?0:normalCDF((Math.log(x)-mu)/sd));
 }
-function adTriangular(s: number[], mean: number) {
+export function adTriangular(s: number[], mean: number) {
   const a=s[0],b=s[s.length-1]; if (b<=a) return 999;
   const c = Math.max(a+1e-9, Math.min(b-1e-9, 3*mean-a-b));
   return andersonDarling(s, x=>{
@@ -119,7 +119,7 @@ function adTriangular(s: number[], mean: number) {
     return 1-(b-x)**2/((b-a)*(b-c));
   });
 }
-function adPert(s: number[], mean: number, std: number) {
+export function adPert(s: number[], mean: number, std: number) {
   const a=s[0],b=s[s.length-1]; if (b<=a||s.length<4) return 999;
   const alpha=6*(mean-a)/Math.max(1e-9,b-a),beta=6*(b-mean)/Math.max(1e-9,b-a);
   const mu2=alpha/(alpha+beta), sig=Math.sqrt(alpha*beta/Math.max(1e-9,(alpha+beta)**2*(alpha+beta+1)));
@@ -130,7 +130,7 @@ function adPert(s: number[], mean: number, std: number) {
   });
 }
 
-function percentileCI(sorted: Float64Array, p: number): [number, number] {
+export function percentileCI(sorted: Float64Array, p: number): [number, number] {
   const N = sorted.length; if (N < 4) return [sorted[0], sorted[N-1]];
   const mu = N*p, sigma = Math.sqrt(N*p*(1-p));
   const lo = Math.max(0, Math.floor(mu-1.96*sigma));
@@ -138,36 +138,103 @@ function percentileCI(sorted: Float64Array, p: number): [number, number] {
   return [sorted[lo], sorted[hi]];
 }
 
-function sobolFirstOrder(
-  base: number[],
-  factors: { name: string; perturb: (f: number) => number[] }[]
+/** Factores del modelo económico Y = q·(p − t·c/3600) para el análisis de sensibilidad. */
+export const SOBOL_FACTORS = ["Tiempo ciclo", "Valor producto", "Volumen mensual", "Costo M.O."] as const;
+
+/**
+ * Índices de Sobol de primer orden con el estimador canónico de Saltelli et al. (2010):
+ *   Sᵢ ≈ (1/N)·Σ (f(B) − f̄)·(f(A_B⁽ⁱ⁾) − f(A)) / V(Y)
+ * donde A y B son dos muestras independientes de las entradas y A_B⁽ⁱ⁾ es A con la
+ * columna i tomada de B. Entradas independientes:
+ *   t ~ distribución simulada de tiempos de ciclo (remuestreo de `times`)
+ *   p, q, c ~ uniformes en ±`uncertainty` alrededor de su valor nominal
+ * Sᵢ es la fracción de la varianza de la utilidad que explica cada factor por sí solo.
+ */
+export function sobolFirstOrder(
+  times: ArrayLike<number>,
+  price: number,
+  qty: number,
+  hourlyCost: number,
+  uncertainty = 0.1,
+  N = 16384,
 ): { name: string; si: number; si_pct: number }[] {
-  const N = base.length;
-  const meanY = base.reduce((a,b)=>a+b,0)/N;
-  const varY  = base.reduce((s,x)=>s+(x-meanY)**2,0)/N;
-  if (varY < 1e-12) return factors.map(f=>({name:f.name,si:0,si_pct:0}));
-  return factors.map(f=>{
-    const p = f.perturb(0.1);
-    const condMean = p.reduce((a,b)=>a+b,0)/N;
-    const condVar  = p.reduce((s,x)=>s+(x-condMean)**2,0)/N;
-    const si = Math.max(0, Math.min(1,(varY-condVar)/varY));
-    return { name: f.name, si, si_pct: si*100 };
-  }).sort((a,b)=>b.si-a.si);
+  const nominal = [0, price, qty, hourlyCost];
+  const draw = (k: number) =>
+    k === 0
+      ? times[Math.floor(Math.random() * times.length)]
+      : nominal[k] * (1 + uncertainty * (2 * Math.random() - 1));
+  const f = (x: number[]) => x[2] * (x[1] - (x[0] * x[3]) / 3600);
+
+  const A: number[][] = [];
+  const B: number[][] = [];
+  for (let j = 0; j < N; j++) {
+    A.push([0, 1, 2, 3].map(draw));
+    B.push([0, 1, 2, 3].map(draw));
+  }
+  const fA = A.map(f);
+  const fB = B.map(f);
+  const all = [...fA, ...fB];
+  const mean = all.reduce((a, b) => a + b, 0) / all.length;
+  const varY = all.reduce((s, y) => s + (y - mean) ** 2, 0) / all.length;
+  if (varY < 1e-12) return SOBOL_FACTORS.map((name) => ({ name, si: 0, si_pct: 0 }));
+
+  return SOBOL_FACTORS.map((name, i) => {
+    let acc = 0;
+    for (let j = 0; j < N; j++) {
+      const ABi = A[j].slice();
+      ABi[i] = B[j][i];
+      acc += (fB[j] - mean) * (f(ABi) - fA[j]); // salida centrada: misma esperanza, mucha menos varianza
+    }
+    const si = Math.max(0, Math.min(1, acc / N / varY));
+    return { name, si, si_pct: si * 100 };
+  }).sort((a, b) => b.si - a.si);
 }
 
-// ─── Mensaje recibido del componente ─────────────────────────────────────────
-self.onmessage = (e: MessageEvent) => {
+// ─── Capacidad de proceso (objetivo = límite superior de especificación) ────
+export function capabilityIndices(target: number, mean: number, variance: number, std: number) {
+  const denomStd=std>0?std:1e-9;
+  const cpk=(target-mean)/(3*denomStd);
+  const cp=target/(6*denomStd);
+  const tau=Math.sqrt(variance+(mean-target)**2);
+  const cpm=target/(6*Math.max(tau,1e-9));
+  const sigmaLevel=(target-mean)/denomStd;
+  const sigmaSix=Math.max(0,Math.min(6,sigmaLevel+1.5));
+  const dpmoTheoretical=Math.round(Math.min(1e6,Math.max(0,(1-normalCDF(sigmaSix-1.5))*1e6)));
+  return { denomStd, cpk, cp, cpm, sigmaLevel, sigmaSix, dpmoTheoretical };
+}
+
+// ─── Riesgo económico: VaR y CVaR al 95% sobre los tiempos ordenados ─────────
+// worst = utilidad en el p95 del tiempo; la cola es el 5% de ciclos más lentos.
+export function valueAtRisk95(
+  sorted: Float64Array, profit: (t: number) => number, expected: number, worst: number,
+): { var95: number; cvar: number } {
+  const N = sorted.length;
+  const var95=expected-worst;
+  const tailStart=Math.floor(0.95*N);
+  let tailSum=0;
+  for(let i=tailStart;i<N;i++) tailSum+=profit(sorted[i]);
+  const tailMean=tailSum/(N-tailStart||1);
+  const cvar=expected-tailMean;
+  return { var95, cvar };
+}
+
+// ─── Parámetros que envía el componente ──────────────────────────────────────
+export interface SimInput {
+  simCount: number; dist: string; effMean: number; effStd: number;
+  target: number; tMin: number; tMax: number; meanShift: number;
+  times: number[]; avgHourlyCost: number; qty: number; price: number;
+  baseMean: number; baseStd: number; samplingMode: 'lhs' | 'qmc';
+  varReduction?: number;
+}
+
+// ─── Simulación completa (pura: el progreso se informa por callback) ─────────
+export function runSimulation(input: SimInput, onProgress: (pct: number) => void = () => {}) {
   const {
     simCount, dist, effMean, effStd, target,
     tMin, tMax, meanShift, times,
     avgHourlyCost, qty, price, baseMean, baseStd,
     samplingMode,
-  } = e.data as {
-    simCount: number; dist: string; effMean: number; effStd: number;
-    target: number; tMin: number; tMax: number; meanShift: number;
-    times: number[]; avgHourlyCost: number; qty: number; price: number;
-    baseMean: number; baseStd: number; samplingMode: 'lhs' | 'qmc';
-  };
+  } = input;
 
   // Muestreo: QMC Halton (baja discrepancia) o LHS + Antithetic estándar
   const uniforms = samplingMode === 'qmc' ? haltonQMC(simCount) : antitheticLHS(simCount);
@@ -226,11 +293,11 @@ self.onmessage = (e: MessageEvent) => {
       const runStd = count > 1 ? Math.sqrt(runningM2/(count-1)) : 0;
       convergence.push({ n: count, mean: runningMean, p95: runningMean + 1.645*runStd });
       // Progreso
-      self.postMessage({ type: "progress", pct: Math.round(count/simCount*80) });
+      onProgress(Math.round(count/simCount*80));
     }
   }
 
-  self.postMessage({ type: "progress", pct: 85 });
+  onProgress(85);
 
   // ── Estadísticas post-loop ────────────────────────────────────────────────
   scenarios.sort(); // sort nativo de Float64Array — muy rápido
@@ -246,21 +313,15 @@ self.onmessage = (e: MessageEvent) => {
 
   // Contar cumplimiento con binary search en Float64Array
   let lo=0,hi=N;
-  while(lo<hi){const mid=(lo+hi)>>1;scenarios[mid]<=target?lo=mid+1:hi=mid;}
+  while(lo<hi){const mid=(lo+hi)>>1;if(scenarios[mid]<=target)lo=mid+1;else hi=mid;}
   const probMeetTarget = lo/N;
 
   const se = simStd/Math.sqrt(N);
   const ciLow=simMean-1.96*se,ciHigh=simMean+1.96*se;
 
   // Capacidad
-  const denomStd=effStd>0?effStd:1e-9;
-  const cpk=(target-simMean)/(3*denomStd);
-  const cp=target/(6*denomStd);
-  const tau=Math.sqrt(simVar+(simMean-target)**2);
-  const cpm=target/(6*Math.max(tau,1e-9));
-  const sigmaLevel=(target-simMean)/denomStd;
-  const sigmaSix=Math.max(0,Math.min(6,sigmaLevel+1.5));
-  const dpmoTheoretical=Math.round(Math.min(1e6,Math.max(0,(1-normalCDF(sigmaSix-1.5))*1e6)));
+  const { denomStd, cpk, cp, cpm, sigmaLevel, sigmaSix, dpmoTheoretical } =
+    capabilityIndices(target, simMean, simVar, effStd);
   const dpmo=Math.round((1-probMeetTarget)*1e6);
 
   const σ_real=baseStd>0?baseStd:1e-9;
@@ -276,7 +337,7 @@ self.onmessage = (e: MessageEvent) => {
   const p5ci=percentileCI(scenarios,0.05);
   const p95ci=percentileCI(scenarios,0.95);
 
-  self.postMessage({ type: "progress", pct: 88 });
+  onProgress(88);
 
   // AD en subsample
   const adStep=Math.max(1,Math.floor(N/2000));
@@ -289,34 +350,22 @@ self.onmessage = (e: MessageEvent) => {
     pert:       adPert(adSample,simMean,simStd),
   };
 
-  self.postMessage({ type: "progress", pct: 92 });
+  onProgress(92);
 
-  // Sobol en subsample
+  // Sensibilidad global (Saltelli) sobre una submuestra de los escenarios simulados
   const sobolStep=Math.max(1,Math.floor(N/3000));
   const ss: number[]=[];
   for(let i=0;i<N;i+=sobolStep) ss.push(scenarios[i]);
-  const c2=avgHourlyCost/3600;
-  const sobolBase=ss.map(t=>qty*(price-t*c2));
-  const sobol=sobolFirstOrder(sobolBase,[
-    {name:"Tiempo ciclo",    perturb:f=>ss.map(t=>qty*(price-t*(1+f)*c2))},
-    {name:"Valor producto",  perturb:f=>ss.map(t=>qty*(price*(1+f)-t*c2))},
-    {name:"Volumen mensual", perturb:f=>ss.map(t=>qty*(1+f)*(price-t*c2))},
-    {name:"Costo M.O.",      perturb:f=>ss.map(t=>qty*(price-t*(avgHourlyCost*(1+f))/3600))},
-  ]);
+  const sobol=sobolFirstOrder(ss,price,qty,avgHourlyCost);
 
-  self.postMessage({ type: "progress", pct: 95 });
+  onProgress(95);
 
   // Financiero
   const costPerSecond=avgHourlyCost/3600;
   const profit=(t:number)=>qty*(price-t*costPerSecond);
   const expected=profit(simMean),best=profit(p5),worst=profit(p95);
   const annualExpected=expected*12;
-  const var95=expected-worst;
-  const tailStart=Math.floor(0.95*N);
-  let tailSum=0;
-  for(let i=tailStart;i<N;i++) tailSum+=profit(scenarios[i]);
-  const tailMean=tailSum/(N-tailStart||1);
-  const cvar=expected-tailMean;
+  const { var95, cvar } = valueAtRisk95(scenarios, profit, expected, worst);
   const costSaved=(simMean-p5)*costPerSecond*qty;
   const costLost=(p95-simMean)*costPerSecond*qty;
   const baselineExpected=profit(baseMean);
@@ -378,28 +427,37 @@ self.onmessage = (e: MessageEvent) => {
   if(probMeetTarget>=0.95&&cpk>=1.33) verdict="capaz";
   else if(probMeetTarget>=0.8||cpk>=1) verdict="aceptable";
 
-  self.postMessage({ type: "progress", pct: 99 });
+  onProgress(99);
 
-  self.postMessage({
-    type:"result",
-    data:{
-      scenarios: Array.from(scenarios),
-      minT,maxT,mean:simMean,std:simStd,cv,p5,p10,p50,p90,p95,
-      probMeetTarget,se,ciLow,ciHigh,
-      cpk,cp,cpm,pp,ppk,ppu,cpk_vs_ppk_ratio,
-      sigmaLevel,sigmaSix,dpmoTheoretical,dpmo,
-      tStat,pValue,rejectH0,
-      p5ci,p95ci,sobol,adScores,
-      samplingMethod: samplingMode === 'qmc'
-        ? "QMC Halton — baja discrepancia (base 2, scrambled)"
-        : "LHS + Antithetic Variates (Float64Array)",
-      mode,modeProbPct,
-      expected,best,worst,annualExpected,var95,cvar,costSaved,costLost,
-      baselineExpected,improvementMonthly,improvementAnnual,improvementPct,
-      showImprovement: e.data.varReduction>0||e.data.meanShift!==0,
-      convergence,recommendedN,histogram,cdf,tornado,
-      goalMean,goalMeanPct,goalStd,goalStdPct,
-      verdict,target,effMean,effStd,
-    }
-  });
-};
+  return {
+    scenarios: Array.from(scenarios),
+    minT,maxT,mean:simMean,std:simStd,cv,p5,p10,p50,p90,p95,
+    probMeetTarget,se,ciLow,ciHigh,
+    cpk,cp,cpm,pp,ppk,ppu,cpk_vs_ppk_ratio,
+    sigmaLevel,sigmaSix,dpmoTheoretical,dpmo,
+    tStat,pValue,rejectH0,
+    p5ci,p95ci,sobol,adScores,
+    samplingMethod: samplingMode === 'qmc'
+      ? "QMC Halton — baja discrepancia (base 2, scrambled)"
+      : "LHS + Antithetic Variates (Float64Array)",
+    mode,modeProbPct,
+    expected,best,worst,annualExpected,var95,cvar,costSaved,costLost,
+    baselineExpected,improvementMonthly,improvementAnnual,improvementPct,
+    showImprovement: input.varReduction>0||input.meanShift!==0,
+    convergence,recommendedN,histogram,cdf,tornado,
+    goalMean,goalMeanPct,goalStd,goalStdPct,
+    verdict,target,effMean,effStd,
+  };
+}
+
+export type SimOutput = ReturnType<typeof runSimulation>;
+
+// ─── Mensaje recibido del componente ─────────────────────────────────────────
+// Solo se registra dentro del Web Worker (existe `self` pero no `window`), para que el
+// módulo pueda importarse en pruebas (jsdom/Node) sin colgar un handler ni fallar.
+if (typeof self !== "undefined" && typeof window === "undefined") {
+  self.onmessage = (e: MessageEvent) => {
+    const data = runSimulation(e.data as SimInput, pct => self.postMessage({ type: "progress", pct }));
+    self.postMessage({ type: "result", data });
+  };
+}

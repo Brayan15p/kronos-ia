@@ -3,14 +3,22 @@ import React, { createContext, useContext, useState, useCallback, useEffect } fr
 
 const SST_STORAGE_KEY = "kronos_sst_v1";
 
+/** Forma de lo guardado en localStorage (las fechas vienen serializadas como texto). */
+interface PersistedSST {
+  readings?: EnvironmentalReading[];
+  workstations?: WorkstationConfig[];
+  zones?: ZoneConfig[];
+}
+
 /** Carga las mediciones SST guardadas, reviviendo las fechas de las lecturas. */
-function loadSST(): { readings?: any[]; workstations?: any[]; zones?: any[] } | null {
+function loadSST(): PersistedSST | null {
   try {
     const raw = localStorage.getItem(SST_STORAGE_KEY);
     if (!raw) return null;
-    const d = JSON.parse(raw) as any;
+    const d = JSON.parse(raw) as PersistedSST;
     if (Array.isArray(d.readings)) {
-      d.readings = d.readings.map((r: any) => ({ ...r, timestamp: new Date(r.timestamp) }));
+      // En JSON la fecha llega como texto; se vuelve a convertir en Date.
+      d.readings = d.readings.map((r) => ({ ...r, timestamp: new Date(r.timestamp) }));
     }
     return d;
   } catch {

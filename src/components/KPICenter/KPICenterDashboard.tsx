@@ -8,16 +8,17 @@ import OEECalculator from './OEECalculator';
 import PredictiveAlert from './PredictiveAlert';
 import BenchmarkPanel from './BenchmarkPanel';
 import CertificationExport from './CertificationExport';
-import { buildAlerts } from './PredictiveAlert';
+import { buildAlerts } from './predictiveAlerts';
 import { downloadCSV } from '../VisionAI/utils';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Legend } from 'recharts';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { lastTableY } from '@/lib/pdf';
 
 const TOOLTIP_STYLE = { background: 'hsl(230,22%,9%)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 8, fontSize: 11 };
 
 const KPICenterDashboard: React.FC = () => {
-  const { cycles, operators, steps, costConfig } = useTimeStudy();
+  const { cycles, operators, costConfig } = useTimeStudy();
   const { readings } = useSST();
   const [oee, setOee] = useState(72);
   const [daysWithoutAccident, setDaysWithoutAccident] = useState(47);
@@ -46,7 +47,7 @@ const KPICenterDashboard: React.FC = () => {
     const roi = dailyLoss > 0 ? Math.round((dailyLoss * 0.7 * 250) / 2500000 * 100) : 0;
 
     return { totalCycles, avgCycleTime, stdTime, pct, dpm, qualityPct, dailyLoss, compliancePct, roi };
-  }, [cycles, operators, steps, readings, costConfig]);
+  }, [cycles, operators, readings, costConfig]);
 
   const alerts = useMemo(() => buildAlerts({
     oee, rulaAvg: 3.2, efficiencyPct: 67, emotionScore: 72, dailyLoss: kpis.dailyLoss, daysWithoutAccident,
@@ -102,7 +103,7 @@ const KPICenterDashboard: React.FC = () => {
       styles: { fontSize: 9 },
       theme: 'striped',
     });
-    y = (doc as any).lastAutoTable.finalY + 10;
+    y = lastTableY(doc) + 10;
 
     if (operatorKPIs.length > 0) {
       if (y > 220) { doc.addPage(); y = 20; }

@@ -9,6 +9,7 @@ import {
 import { AlertTriangle, TrendingDown, TrendingUp, Zap, Shield, Activity, FileDown, FileSpreadsheet } from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import { lastTableY } from "@/lib/pdf";
 
 const COLORS = ["#22c55e", "#eab308", "#ef4444"];
 
@@ -165,7 +166,7 @@ const SSTDashboard: React.FC = () => {
       headStyles: { fillColor: [0, 180, 200] },
       styles: { fontSize: 9 },
     });
-    y = (doc as any).lastAutoTable.finalY + 10;
+    y = lastTableY(doc) + 10;
 
     if (alerts.length > 0) {
       doc.setFontSize(14);
@@ -179,7 +180,7 @@ const SSTDashboard: React.FC = () => {
         headStyles: { fillColor: [200, 60, 60] },
         styles: { fontSize: 8 },
       });
-      y = (doc as any).lastAutoTable.finalY + 10;
+      y = lastTableY(doc) + 10;
     }
 
     if (readings.length > 0) {

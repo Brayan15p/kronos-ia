@@ -6,11 +6,20 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+// Límite del resumen que se envía al modelo (evita peticiones gigantes y costos inesperados).
+const MAX_SUMMARY_CHARS = 20_000;
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
     const { summary } = await req.json();
+    const summaryJson = JSON.stringify(summary ?? {}, null, 2);
+    if (summaryJson.length > MAX_SUMMARY_CHARS) {
+      return new Response(JSON.stringify({ error: "Los datos enviados son demasiado grandes." }), {
+        status: 413, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
 
@@ -43,7 +52,7 @@ Sé específico con cantidades, costos en COP, plazos, y normativa aplicable. In
         model: "google/gemini-3-flash-preview",
         messages: [
           { role: "system", content: systemPrompt },
-          { role: "user", content: `Analiza estos datos ambientales de la planta de producción de grullas de origami:\n\n${JSON.stringify(summary, null, 2)}` },
+          { role: "user", content: `Analiza estos datos ambientales de la planta de producción:\n\n${summaryJson}` },
         ],
       }),
     });

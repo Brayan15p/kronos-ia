@@ -293,11 +293,13 @@ Un estadístico t contrasta si la media simulada difiere significativamente del 
 
 ### 6.7. Análisis de sensibilidad global (Sobol de primer orden)
 
-Sobre una submuestra (paso adaptativo para acotar el cómputo a ~3.000 puntos), el módulo construye la utilidad base y estima el índice de primer orden de cuatro factores —tiempo de ciclo, valor del producto, volumen mensual y costo de mano de obra— como la reducción relativa de varianza al perturbar cada factor:
+El módulo estima los índices de primer orden de cuatro factores —tiempo de ciclo, valor del producto, volumen mensual y costo de mano de obra— sobre el modelo de utilidad Y = q·(p − t·c/3600), con el estimador canónico de Saltelli et al. [5]. Se generan dos muestras independientes A y B de las entradas (N = 16.384 filas cada una): el tiempo de ciclo t se remuestrea de la distribución simulada (submuestra de ~3.000 escenarios) y el precio p, el volumen q y el costo c se modelan como uniformes en ±10% alrededor de su valor nominal, el mismo rango del diagrama de Tornado. Para cada factor i se construye A_B⁽ⁱ⁾ (A con la columna i tomada de B) y se calcula
 
-  Sᵢ = máx(0, mín(1, (Var(Y) − Var(Y|perturbación de i)) / Var(Y)))
+  Sᵢ ≈ (1/N)·Σⱼ (f(B)ⱼ − f̄)·(f(A_B⁽ⁱ⁾)ⱼ − f(A)ⱼ) / V(Y)
 
-Los factores se ordenan por Sᵢ descendente, identificando cuál explica más la variabilidad de la rentabilidad. (Véase la nota de la Sección 9 sobre el carácter aproximado de esta estimación.)
+Centrar la salida (restar f̄) no cambia la esperanza del estimador y reduce mucho su varianza cuando la utilidad media es grande frente a su dispersión. La implementación se valida contra los índices analíticos del modelo (que admite solución cerrada al ser las entradas independientes): con N = 16.384, el error máximo observado en 30 corridas fue de 0,014. Los factores se ordenan por Sᵢ descendente.
+
+Una consecuencia importante: el resultado depende del supuesto de incertidumbre. Con ±10% en precio y volumen, estos factores pueden explicar más varianza que el tiempo de ciclo cuando la mano de obra es una fracción pequeña del precio; el análisis no presupone que el tiempo sea siempre la palanca dominante.
 
 ### 6.8. Bondad de ajuste (Anderson–Darling)
 
@@ -363,7 +365,7 @@ Supóngase un puesto de ensamble manual donde se cronometraron ciclos cuyo anál
 - **C_{pk} ≈ 0,44** → muy por debajo de 1,33: el proceso **no es capaz**; el objetivo está a menos de 1,5 desviaciones de la media.
 - **DPMO empírico ≈ 90.000** → nivel sigma cercano a 2,8σ.
 - **Goal-seek:** para alcanzar 95% de cumplimiento, la media debería bajar a ≈ 50,1 s **o** la desviación reducirse a ≤ 4,9 s.
-- **Sensibilidad (Sobol/Tornado):** el "tiempo de ciclo" explica la mayor parte de la varianza de la rentabilidad → la palanca prioritaria es reducir y estabilizar el tiempo, no ajustar precio o volumen.
+- **Sensibilidad (Sobol/Tornado):** si el "tiempo de ciclo" explica la mayor parte de la varianza de la rentabilidad, la palanca prioritaria es reducir y estabilizar el tiempo; si dominan el precio o el volumen, la incertidumbre comercial pesa más que la operativa.
 - **Riesgo económico:** VaR y CVaR cuantifican cuánta utilidad mensual se pone en juego por la cola de ciclos lentos.
 
 La **lectura en menos de cinco segundos** sería: *proceso no capaz, principal causa la variabilidad del tiempo de ciclo, acción prioritaria estandarizar el método para bajar la media a ~50 s.* Esa es la diferencia frente al tiempo estándar clásico, que solo habría dicho "52 segundos" sin revelar el riesgo de incumplimiento ni la palanca de mejora.
@@ -399,8 +401,8 @@ El módulo reproduce el núcleo metodológico que McKinsey aplica a proyectos de
 
 En aras del rigor, se documentan las limitaciones del modelo:
 
-1. **El índice de Sobol implementado es una aproximación de primer orden** basada en perturbación, no la estimación canónica por integrales de Sobol/Saltelli con matrices A, B [5]. Identifica correctamente el factor dominante pero no debe interpretarse como un índice de varianza exacto ni captura interacciones de orden superior.
-2. **El módulo simula una sola variable estocástica (el tiempo de ciclo).** Los demás factores económicos (volumen, precio, costo) se tratan como deterministas en la propagación principal y solo se perturban en los análisis de sensibilidad. Una extensión multivariada con estructura de correlación sería un trabajo futuro.
+1. **Solo se estiman índices de Sobol de primer orden**, con incertidumbre supuesta de ±10% (uniforme) en precio, volumen y costo. No se reportan índices totales ni interacciones de orden superior, y el orden de los factores depende de ese supuesto. (Una versión anterior del módulo usaba una aproximación por perturbación que devolvía índices nulos; fue reemplazada por el estimador de Saltelli descrito en la Sección 6.7.)
+2. **La propagación principal simula una sola variable estocástica (el tiempo de ciclo).** Los demás factores económicos (volumen, precio, costo) se tratan como deterministas en los indicadores de capacidad y riesgo, y solo se hacen inciertos en los análisis de sensibilidad. Una extensión multivariada con estructura de correlación sería un trabajo futuro.
 3. **La calidad del modelo depende de la calidad de los datos.** Pocos ciclos cronometrados producen estimaciones de media y varianza inestables; de ahí la importancia del N recomendado (Sección 6.9).
 4. **El corrimiento de 1,5σ** en el cálculo del nivel sigma es una convención industrial estándar, no una propiedad del proceso particular.
 5. **La función de utilidad es lineal** en el tiempo de ciclo; procesos con economías o deseconomías de escala requerirían una función no lineal.

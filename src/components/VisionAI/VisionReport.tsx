@@ -5,6 +5,7 @@ import { VisionSession, EmotionState } from './types';
 import { THERBLIG_INFO, EMOTION_INFO, downloadCSV } from './utils';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { lastTableY } from '@/lib/pdf';
 
 interface Props {
   session: VisionSession;
@@ -70,7 +71,7 @@ const VisionReport: React.FC<Props> = ({ session, operatorName = 'Operario' }) =
       headStyles: { fillColor: [0, 180, 210] },
       styles: { fontSize: 9 },
     });
-    y = (doc as any).lastAutoTable.finalY + 10;
+    y = lastTableY(doc) + 10;
 
     // Therbligs table
     const byType: Record<string, number> = {};
@@ -98,7 +99,7 @@ const VisionReport: React.FC<Props> = ({ session, operatorName = 'Operario' }) =
       headStyles: { fillColor: [0, 180, 210] },
       styles: { fontSize: 8 },
     });
-    y = (doc as any).lastAutoTable.finalY + 10;
+    y = lastTableY(doc) + 10;
 
     // Emotion timeline (samples)
     if (session.snapshots.length > 0) {

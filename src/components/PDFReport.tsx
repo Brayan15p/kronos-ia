@@ -4,6 +4,7 @@ import { FileDown, Lightbulb } from "lucide-react";
 import { useTimeStudy } from "@/context/TimeStudyContext";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import { lastTableY } from "@/lib/pdf";
 
 const PDFReport: React.FC = () => {
   const { cycles, defects, qualityChecks, operators, costConfig, steps } = useTimeStudy();
@@ -476,7 +477,7 @@ const PDFReport: React.FC = () => {
         headStyles: { fillColor: [0, 180, 200] },
         styles: { fontSize: 8 },
       });
-      y = (doc as any).lastAutoTable.finalY + 10;
+      y = lastTableY(doc) + 10;
     }
 
     if (defects.length > 0) {
@@ -492,7 +493,7 @@ const PDFReport: React.FC = () => {
         headStyles: { fillColor: [200, 60, 60] },
         styles: { fontSize: 8 },
       });
-      y = (doc as any).lastAutoTable.finalY + 10;
+      y = lastTableY(doc) + 10;
     }
 
     // ───────── 8) Sugerencias de Mejora Continua ─────────

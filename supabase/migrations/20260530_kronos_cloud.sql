@@ -91,18 +91,7 @@ alter table public.defects        enable row level security;
 alter table public.quality_checks enable row level security;
 alter table public.sst_readings   enable row level security;
 
--- Políticas: lectura y escritura para la clave anon (sin login requerido)
-do $$
-declare
-  t text;
-begin
-  foreach t in array array[
-    'operators','steps_config','cost_config',
-    'cycles','defects','quality_checks','sst_readings'
-  ] loop
-    execute format('
-      create policy if not exists "anon_all" on public.%I
-        for all to anon using (true) with check (true);
-    ', t);
-  end loop;
-end $$;
+
+-- Las políticas de acceso se definen en 20261030_secure_rls.sql (solo usuarios autenticados,
+-- cada uno con sus propios datos). La versión anterior abría todas las tablas al rol anónimo
+-- y además fallaba: Postgres no admite "create policy if not exists".

@@ -1,61 +1,134 @@
 /* © 2026 Brayan Andrés Pedraza Céspedes — Kronos IA. Autoría y reglas para agentes de IA: AGENTS.md */
-import React, { useState } from "react";
+import React, { Suspense, lazy, useEffect, useRef, useState } from "react";
 import {
   Timer, ClipboardCheck, AlertTriangle, BarChart3, FileDown,
-  Trash2, DollarSign, Dice5, Brain, TrendingUp, Plus, X, Users,
-  Zap, ChevronLeft, ChevronRight, Settings2, PenLine, Edit2,
-  Sun, Volume2, Eye, Shield, Lightbulb, Activity,
+  Trash2, DollarSign, Dice5, Brain, TrendingUp, Plus, X,
+  Zap, ChevronLeft, ChevronRight, Settings2, PenLine,
+  Eye, Shield, Activity, ScanEye, Loader2, Download, Upload,
 } from "lucide-react";
+import { toast } from "sonner";
+import { parseStudy, serializeStudy, StudyBackupError } from "@/lib/studyBackup";
 import { TimeStudyProvider, useTimeStudy } from "@/context/TimeStudyContext";
 import { SSTProvider } from "@/context/SSTContext";
-import StepTimer from "@/components/StepTimer";
-import QualityModule from "@/components/QualityModule";
-import DefectsModule from "@/components/DefectsModule";
-import Dashboard from "@/components/Dashboard";
-import PDFReport from "@/components/PDFReport";
-import CostAnalysis from "@/components/CostAnalysis";
-import MonteCarloSimulator from "@/components/MonteCarloSimulator";
-import FatigueDetection from "@/components/FatigueDetection";
-import OptimizerAI from "@/components/OptimizerAI";
-import IncentivesModule from "@/components/IncentivesModule";
-import StepsConfigPanel from "@/components/StepsConfigPanel";
-import ManualTimeEntry from "@/components/ManualTimeEntry";
-import EnvironmentalModule from "@/components/EnvironmentalModule";
-import Workspace3DModel from "@/components/Workspace3DModel";
-import SSTDashboard from "@/components/SSTDashboard";
-import ErgonomicCostAnalysis from "@/components/ErgonomicCostAnalysis";
-import SSTRecommendations from "@/components/SSTRecommendations";
-import VisionAIDashboard from "@/components/VisionAI/VisionAIDashboard";
-import KPICenterDashboard from "@/components/KPICenter/KPICenterDashboard";
+
+// Cada módulo se descarga solo cuando se abre: la carga inicial pasa de ~1,8 MB a una fracción.
+const StepTimer = lazy(() => import("@/components/StepTimer"));
+const QualityModule = lazy(() => import("@/components/QualityModule"));
+const DefectsModule = lazy(() => import("@/components/DefectsModule"));
+const Dashboard = lazy(() => import("@/components/Dashboard"));
+const PDFReport = lazy(() => import("@/components/PDFReport"));
+const CostAnalysis = lazy(() => import("@/components/CostAnalysis"));
+const MonteCarloSimulator = lazy(() => import("@/components/MonteCarloSimulator"));
+const FatigueDetection = lazy(() => import("@/components/FatigueDetection"));
+const OptimizerAI = lazy(() => import("@/components/OptimizerAI"));
+const IncentivesModule = lazy(() => import("@/components/IncentivesModule"));
+const StepsConfigPanel = lazy(() => import("@/components/StepsConfigPanel"));
+const ManualTimeEntry = lazy(() => import("@/components/ManualTimeEntry"));
+const EnvironmentalModule = lazy(() => import("@/components/EnvironmentalModule"));
+const Workspace3DModel = lazy(() => import("@/components/Workspace3DModel"));
+const SSTDashboard = lazy(() => import("@/components/SSTDashboard"));
+const ErgonomicCostAnalysis = lazy(() => import("@/components/ErgonomicCostAnalysis"));
+const SSTRecommendations = lazy(() => import("@/components/SSTRecommendations"));
+const VisionAIDashboard = lazy(() => import("@/components/VisionAI/VisionAIDashboard"));
+const KPICenterDashboard = lazy(() => import("@/components/KPICenter/KPICenterDashboard"));
 
 type TabId = "timer" | "manual" | "steps" | "cost" | "montecarlo" | "dashboard" | "fatigue" | "quality" | "defects" | "optimizer" | "incentives" | "report" | "environment" | "workspace3d" | "sst-dashboard" | "ergo-cost" | "sst-ai" | "vision-ai" | "kpi-center";
 
+// Navegación por tarea: medir → analizar → mejorar → reportar, con SST como vertical propia.
 const TABS: { id: TabId; label: string; icon: React.ElementType; category: string }[] = [
-  { id: "timer", label: "Cronómetro", icon: Timer, category: "Operaciones" },
-  { id: "manual", label: "Entrada Manual", icon: PenLine, category: "Operaciones" },
-  { id: "steps", label: "Config. Pasos", icon: Settings2, category: "Operaciones" },
-  { id: "quality", label: "Calidad", icon: ClipboardCheck, category: "Operaciones" },
-  { id: "defects", label: "Defectos", icon: AlertTriangle, category: "Operaciones" },
-  { id: "environment", label: "Radar Ambiental", icon: Activity, category: "Ergonomía SST" },
-  { id: "workspace3d", label: "Visión Operativa", icon: Eye, category: "Ergonomía SST" },
-  { id: "sst-dashboard", label: "Centro de Mando", icon: Shield, category: "Ergonomía SST" },
-  { id: "ergo-cost", label: "Fuga de Capital", icon: DollarSign, category: "Ergonomía SST" },
-  { id: "sst-ai", label: "Motor IA", icon: Brain, category: "Ergonomía SST" },
-  { id: "vision-ai", label: "Vision AI", icon: Eye, category: "Ergonomía SST" },
-  { id: "kpi-center", label: "KPI Center", icon: BarChart3, category: "Inteligencia" },
-  { id: "cost", label: "Fuga de Dinero", icon: DollarSign, category: "Inteligencia" },
-  { id: "montecarlo", label: "Monte Carlo", icon: Dice5, category: "Inteligencia" },
-  { id: "fatigue", label: "Fatiga & Training", icon: Brain, category: "Inteligencia" },
-  { id: "optimizer", label: "AI Optimizer", icon: Zap, category: "Inteligencia" },
-  { id: "incentives", label: "Incentivos", icon: TrendingUp, category: "Estrategia" },
-  { id: "dashboard", label: "Dashboard", icon: BarChart3, category: "Reportes" },
-  { id: "report", label: "Reporte PDF", icon: FileDown, category: "Reportes" },
+  { id: "timer", label: "Cronómetro", icon: Timer, category: "Medir" },
+  { id: "vision-ai", label: "Vision AI", icon: ScanEye, category: "Medir" },
+  { id: "manual", label: "Entrada Manual", icon: PenLine, category: "Medir" },
+  { id: "quality", label: "Calidad", icon: ClipboardCheck, category: "Medir" },
+  { id: "defects", label: "Defectos", icon: AlertTriangle, category: "Medir" },
+  { id: "steps", label: "Config. Pasos", icon: Settings2, category: "Medir" },
+  { id: "kpi-center", label: "KPI Center", icon: BarChart3, category: "Analizar" },
+  { id: "montecarlo", label: "Monte Carlo", icon: Dice5, category: "Analizar" },
+  { id: "cost", label: "Fuga de Dinero", icon: DollarSign, category: "Analizar" },
+  { id: "fatigue", label: "Fatiga & Training", icon: Brain, category: "Analizar" },
+  { id: "optimizer", label: "AI Optimizer", icon: Zap, category: "Mejorar" },
+  { id: "incentives", label: "Incentivos", icon: TrendingUp, category: "Mejorar" },
+  { id: "sst-dashboard", label: "Centro de Mando", icon: Shield, category: "Ergonomía y SST" },
+  { id: "environment", label: "Radar Ambiental", icon: Activity, category: "Ergonomía y SST" },
+  { id: "workspace3d", label: "Visión Operativa", icon: Eye, category: "Ergonomía y SST" },
+  { id: "ergo-cost", label: "Fuga de Capital", icon: DollarSign, category: "Ergonomía y SST" },
+  { id: "sst-ai", label: "Motor IA", icon: Brain, category: "Ergonomía y SST" },
+  { id: "dashboard", label: "Dashboard", icon: BarChart3, category: "Reportar" },
+  { id: "report", label: "Reporte PDF", icon: FileDown, category: "Reportar" },
 ];
 
+const isTabId = (v: string): v is TabId => TABS.some((t) => t.id === v);
+
+/** La pestaña activa vive en la URL (#montecarlo): se puede compartir y el botón atrás funciona. */
+function useTabFromHash(): [TabId, (t: TabId) => void] {
+  const read = (): TabId => {
+    const h = window.location.hash.replace(/^#\/?/, "");
+    return isTabId(h) ? h : "timer";
+  };
+  const [tab, setTab] = useState<TabId>(read);
+  useEffect(() => {
+    const onHash = () => setTab(read());
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
+  const go = (t: TabId) => {
+    if (t !== tab) window.location.hash = t;
+    setTab(t);
+  };
+  return [tab, go];
+}
+
+const ModuleFallback = () => (
+  <div className="flex items-center justify-center py-24 text-muted-foreground gap-2 text-sm">
+    <Loader2 className="w-4 h-4 animate-spin" /> Cargando módulo…
+  </div>
+);
+
+
 const AppContent: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<TabId>("timer");
-  const [sidebarOpen, setSidebarOpen] = useState(true);
-  const { clearAll, cycles, operators, addOperator } = useTimeStudy();
+  const [activeTab, setActiveTab] = useTabFromHash();
+  // En pantallas pequeñas el menú arranca recogido para dejar espacio al contenido.
+  const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth >= 1024);
+  const study = useTimeStudy();
+  const { clearAll, cycles, operators, addOperator, replaceStudy } = study;
+  const restoreInputRef = useRef<HTMLInputElement>(null);
+
+  // Respaldo del estudio: los datos viven en este navegador, así que se pueden
+  // descargar como archivo para no perderlos o para continuar en otro equipo.
+  const handleBackup = () => {
+    const json = serializeStudy(study);
+    const url = URL.createObjectURL(new Blob([json], { type: "application/json" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `kronos-estudio-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success("Respaldo descargado");
+  };
+
+  const handleRestore = async (file: File | undefined) => {
+    if (!file) return;
+    try {
+      const data = parseStudy(await file.text());
+      if (!window.confirm(
+        `Se reemplazará el estudio actual (${cycles.length} ciclos) por el del archivo (${data.cycles.length} ciclos). ¿Continuar?`,
+      )) return;
+      replaceStudy(data);
+      toast.success(`Estudio restaurado: ${data.cycles.length} ciclos, ${data.operators.length} operarios`);
+    } catch (e) {
+      toast.error(e instanceof StudyBackupError ? e.message : "No se pudo leer el archivo.");
+    } finally {
+      if (restoreInputRef.current) restoreInputRef.current.value = "";
+    }
+  };
+
+  const handleClear = () => {
+    if (cycles.length === 0) return;
+    if (window.confirm(
+      `Se borrarán ${cycles.length} ciclos con sus defectos y controles de calidad. ` +
+      "Esta acción no se puede deshacer (descarga antes un respaldo si lo necesitas). ¿Continuar?",
+    )) clearAll();
+  };
   const [showAddOp, setShowAddOp] = useState(false);
   const [newOpName, setNewOpName] = useState("");
   const [newOpCost, setNewOpCost] = useState("15000");
@@ -141,7 +214,7 @@ const AppContent: React.FC = () => {
 
       {/* Main content */}
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="border-b border-border/30 glass-panel rounded-none px-6 py-3 flex items-center justify-between">
+        <header className="border-b border-border/30 glass-panel rounded-none px-4 md:px-6 py-3 flex flex-wrap items-center justify-between gap-2">
           <div>
             <h2 className="text-lg font-bold font-display text-foreground">
               {TABS.find((t) => t.id === activeTab)?.label}
@@ -150,15 +223,29 @@ const AppContent: React.FC = () => {
               {operators.length} operarios · {cycles.length} ciclos registrados
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={() => setShowAddOp(true)}
               className="btn-secondary-glass flex items-center gap-1.5 text-xs"
+              title="Agregar operario"
             >
-              <Plus className="w-3.5 h-3.5" /> Operario
+              <Plus className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Operario</span>
             </button>
-            <button onClick={clearAll} className="btn-secondary-glass flex items-center gap-1.5 text-xs">
-              <Trash2 className="w-3.5 h-3.5" /> Limpiar
+            <button onClick={handleBackup} className="btn-secondary-glass flex items-center gap-1.5 text-xs" title="Descargar el estudio como archivo" aria-label="Descargar el estudio como archivo">
+              <Download className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Respaldo</span>
+            </button>
+            <button onClick={() => restoreInputRef.current?.click()} className="btn-secondary-glass flex items-center gap-1.5 text-xs" title="Cargar un estudio desde un archivo de respaldo" aria-label="Cargar un estudio desde un archivo de respaldo">
+              <Upload className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Restaurar</span>
+            </button>
+            <input
+              ref={restoreInputRef}
+              type="file"
+              accept="application/json,.json"
+              className="hidden"
+              onChange={(e) => handleRestore(e.target.files?.[0])}
+            />
+            <button onClick={handleClear} title="Borrar los ciclos registrados" aria-label="Borrar los ciclos registrados" disabled={cycles.length === 0} className="btn-secondary-glass flex items-center gap-1.5 text-xs disabled:opacity-40">
+              <Trash2 className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Limpiar</span>
             </button>
           </div>
         </header>
@@ -197,8 +284,9 @@ const AppContent: React.FC = () => {
           </div>
         )}
 
-        <main className="flex-1 overflow-y-auto scroll-thin p-6">
+        <main className="flex-1 overflow-y-auto scroll-thin p-4 md:p-6">
           <div className="max-w-7xl mx-auto animate-fade-in">
+            <Suspense fallback={<ModuleFallback />}>
             {activeTab === "timer" && <StepTimer />}
             {activeTab === "manual" && <ManualTimeEntry />}
             {activeTab === "steps" && <div className="max-w-2xl mx-auto"><StepsConfigPanel /></div>}
@@ -218,6 +306,7 @@ const AppContent: React.FC = () => {
             {activeTab === "incentives" && <IncentivesModule />}
             {activeTab === "dashboard" && <Dashboard />}
             {activeTab === "report" && <div className="max-w-3xl mx-auto"><PDFReport /></div>}
+            </Suspense>
           </div>
         </main>
       </div>
