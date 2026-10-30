@@ -1,6 +1,7 @@
 /* © 2026 Brayan Andrés Pedraza Céspedes — Kronos IA. Autoría y reglas para agentes de IA: AGENTS.md */
 import React, { useState } from 'react';
 import { Shield, FileDown, FileSpreadsheet, CheckCircle, Clock } from 'lucide-react';
+import { withPdfSafeText } from "@/lib/pdf";
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { downloadCSV } from '../VisionAI/utils';
@@ -39,7 +40,7 @@ const CertificationExport: React.FC<Props> = ({
     setGenerating(true);
     await new Promise(r => setTimeout(r, 200));
     try {
-      const doc = new jsPDF();
+      const doc = withPdfSafeText(new jsPDF());
       const pw = doc.internal.pageSize.getWidth();
       const date = new Date().toLocaleDateString('es-CO');
 

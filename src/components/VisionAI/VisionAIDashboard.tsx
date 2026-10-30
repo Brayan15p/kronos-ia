@@ -10,6 +10,8 @@ import VirtualObjectSim from './VirtualObjectSim';
 import VisionReport from './VisionReport';
 import CalibrationPanel from './CalibrationPanel';
 import AutoCyclePanel from './AutoCyclePanel';
+import ExpertReviewPanel from './ExpertReviewPanel';
+import { isWorsePosture, type ExpertReview } from './expertReview';
 import { toast } from 'sonner';
 import { CycleDetector, handsCentroid, type CycleDetectorState, type DetectedCycle, type Point } from '@/lib/cycleDetector';
 import {
@@ -46,6 +48,10 @@ const VisionAIDashboard: React.FC = () => {
   const [sessionSeconds,  setSessionSeconds]  = useState(0);
   const [expertTemplate,  setExpertTemplate]  = useState<ExpertTemplate | null>(null);
   const [session, setSession] = useState<VisionSession>({ startTime: Date.now(), endTime: null, snapshots: [], therbligs: [] });
+  // Revisión del experto (RULA/REBA corregidos) y peor postura de la sesión para revisarla.
+  const [expertReview,    setExpertReview]    = useState<ExpertReview | null>(null);
+  const [criticalPosture, setCriticalPosture] = useState<PostureScore | null>(null);
+  const criticalPostureRef = useRef<PostureScore | null>(null);
 
   // Adjustable classifier config (read inside handleResults via ref to avoid stale closures).
   // Se restaura desde localStorage para que la calibración persista entre sesiones.
@@ -158,6 +164,9 @@ const VisionAIDashboard: React.FC = () => {
     setSession({ startTime: now, endTime: null, snapshots: [], therbligs: [] });
     setTherbligHistory([]);
     setSessionSeconds(0);
+    criticalPostureRef.current = null;
+    setCriticalPosture(null);
+    setExpertReview(null);
     setIsActive(true);
   };
 
@@ -175,6 +184,9 @@ const VisionAIDashboard: React.FC = () => {
     cycleDetectorRef.current.reset();
     setCycleStatus('uncalibrated'); setDetectedCycles([]);
     therbligRef.current = []; snapshotRef.current = [];
+    criticalPostureRef.current = null;
+    setCriticalPosture(null);
+    setExpertReview(null);
     setSession({ startTime: Date.now(), endTime: null, snapshots: [], therbligs: [] });
   };
 
@@ -271,6 +283,10 @@ const VisionAIDashboard: React.FC = () => {
       const ps = calculateRULA(pose, configRef.current.rulaStrictness);
       setCurrentPosture(ps);
       currentPostureRef.current = ps;
+      if (isWorsePosture(ps, criticalPostureRef.current)) {
+        criticalPostureRef.current = ps;
+        setCriticalPosture(ps);
+      }
     }
 
     // ── Snapshots ──
@@ -305,6 +321,7 @@ const VisionAIDashboard: React.FC = () => {
     ...session,
     therbligs: therbligHistory,
     snapshots: snapshotRef.current,
+    expertReview,
   };
 
   return (
@@ -423,6 +440,15 @@ const VisionAIDashboard: React.FC = () => {
         />
         <VisionReport session={displaySession} operatorName="Operario" />
       </div>
+
+      {/* ── Revisión del experto (corrección manual de RULA/REBA) ── */}
+      <ExpertReviewPanel
+        posture={currentPosture}
+        criticalPosture={criticalPosture}
+        review={expertReview}
+        onSave={setExpertReview}
+        onClear={() => setExpertReview(null)}
+      />
     </div>
   );
 };

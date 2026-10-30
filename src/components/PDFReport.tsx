@@ -4,7 +4,7 @@ import { FileDown, Lightbulb } from "lucide-react";
 import { useTimeStudy } from "@/context/TimeStudyContext";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
-import { lastTableY } from "@/lib/pdf";
+import { lastTableY, withPdfSafeText } from "@/lib/pdf";
 
 const PDFReport: React.FC = () => {
   const { cycles, defects, qualityChecks, operators, costConfig, steps } = useTimeStudy();
@@ -262,7 +262,7 @@ const PDFReport: React.FC = () => {
   };
 
   const generatePDF = () => {
-    const doc = new jsPDF();
+    const doc = withPdfSafeText(new jsPDF());
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
     const M = 14; // margen

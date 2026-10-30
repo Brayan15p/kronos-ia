@@ -39,6 +39,12 @@ latinoamericana de manufactura manual.
   peligros GTC 45:2012 prellenada (propuestas editables de ND/NE), mediciones de lux y ruido, plan
   de acción y PDF de evidencias + CSV para Excel. La dosis de ruido ahora usa el intercambio de
   5 dB de la Res. 1792/1990 (antes 3 dB).
+- **Balanceo de línea y yamazumi:** takt, estaciones que de verdad cumplen el takt, reparto óptimo y
+  riesgo por estación con Monte Carlo.
+- **Curva de aprendizaje y matriz de competencias ILUO**, con alertas de dependencia de una sola persona.
+- **Revisión del experto en ergonomía:** corrige ángulos y factores de RULA/REBA, queda en el paquete
+  SG-SST (la matriz usa el valor del experto) y guarda los pares cámara vs experto para validar.
+- **PDFs sin caracteres rotos:** flechas y símbolos que Helvetica no dibuja se reemplazan en todos los PDFs.
 - **Corrección del RULA:** el cálculo anterior medía el brazo contra la línea de hombros y la muñeca
   contra la horizontal de la imagen, así que una postura neutral daba "riesgo alto" (5). Ahora sigue
   a McAtamney & Corlett (1993), con sus tablas A, B y C: la postura neutral da 1–2 (aceptable).
@@ -48,14 +54,12 @@ latinoamericana de manufactura manual.
 | # | Qué | Por qué | Esfuerzo |
 |---|---|---|---|
 | 2 | **Validar los ciclos automáticos con un video real** y medir el error frente al cronómetro; v2 con ejemplo marcado + DTW para procesos sin posición inicial clara | Es la promesa central; hay que poder decir "error < 3 %" con datos | M |
-| 3b | **Corrección manual del experto** sobre los ángulos de RULA/REBA y validación contra un ergónomo en 10 puestos reales | Cierra la brecha de confianza que hoy solo se muestra | S |
+| 3b | **Validar contra un ergónomo en 10 puestos reales** con la revisión del experto (ya construida: guarda los pares cámara vs experto y calcula la concordancia) | Convierte el tamizaje en un dato defendible | S |
 | 4b | **Revisión del paquete SG-SST por un profesional SST con licencia** (mapeo a GTC 45 y Res. 0312) antes de usarlo en ventas | Las propuestas de ND/NE son convención de Kronos, no de la guía | S |
 
 ## Siguiente (2–6 meses): más valor por planta
 
 5. **Trabajo estándar (SOP) automático**: pasos con fotograma clave, tiempo estándar y puntos de calidad.
-6. **Balanceo de línea y yamazumi** con el riesgo del Monte Carlo incluido.
-7. **Curva de aprendizaje y matriz de competencias** por operario (base justa para incentivos).
 8. **Detección de pasos omitidos o fuera de orden** (pasar de medir tiempo a prevenir defectos).
 9. **IA en el navegador (WebLLM)** con base de conocimiento lean/SST; OpenRouter como respaldo.
 

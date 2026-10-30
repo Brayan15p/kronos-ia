@@ -699,6 +699,8 @@ export interface RulaFromPose {
   detail: RulaDetail;
   /** Ángulos medidos (sin escalar por el rigor), relativos al cuerpo. */
   angles: { neck: number; trunk: number; upperArm: number; elbow: number; wrist: number | null };
+  /** true = el segmento está en extensión (solo se distingue con vista no frontal). */
+  extension: { neck: boolean; trunk: boolean; upperArm: boolean };
 }
 
 /**
@@ -741,6 +743,7 @@ export function calculateRULAFromPose(pose: Landmark[], opts: RulaOptions = {}):
       side, strictness: s, wristAssumed: arm.wrist == null,
     },
     angles: { neck: m.neck, trunk: m.trunk, upperArm: arm.upperArm, elbow: arm.elbow, wrist: arm.wrist },
+    extension: { neck: m.neckExt, trunk: m.trunkExt, upperArm: arm.upperArmExt },
   };
 }
 
