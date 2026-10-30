@@ -4,13 +4,15 @@ import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { calculateRULA } from '@/components/VisionAI/utils';
 import PostureAnalyzer from '@/components/VisionAI/PostureAnalyzer';
-import type { Landmark } from '@/components/VisionAI/types';
+import { DEFAULT_CLASSIFIER_CONFIG, type Landmark } from '@/components/VisionAI/types';
 import {
   DEFAULT_ASPECT, REBA_TABLE_A, REBA_TABLE_B, REBA_TABLE_C,
   rebaTableA, rebaTableB, rebaTableC, rebaFromComponents, rebaRiskLevel,
   rebaTrunkScore, rebaNeckScore, rebaLegsScore, rebaUpperArmScore, rebaLowerArmScore, rebaWristScore,
   calculateREBA, estimateCameraView, segmentConfidence, computeSegmentConfidences, visibilityScore,
   SEGMENT_RELIABILITY,
+  RULA_TABLE_A, RULA_TABLE_B, RULA_TABLE_C, rulaTableA, rulaTableB, rulaTableC, rulaRiskLevel, rulaFromComponents,
+  rulaUpperArmScore, rulaLowerArmScore, rulaWristScore, rulaNeckScore, rulaTrunkScore, calculateRULAFromPose,
 } from '@/components/VisionAI/ergonomics';
 
 // ── Poses sintéticas ─────────────────────────────────────────────────────────
@@ -186,7 +188,8 @@ describe('REBA — límites y niveles de riesgo', () => {
   it('puntuaciones parciales a partir de ángulos', () => {
     expect([0, 5, 6, 20, 21, 60, 61].map(a => rebaTrunkScore(a))).toEqual([1, 1, 2, 2, 3, 3, 4]);
     expect(rebaTrunkScore(70, true)).toBe(3);        // extensión > 20° → 3
-    expect([0, 20, 21].map(rebaNeckScore)).toEqual([1, 1, 2]);
+    expect([0, 20, 21].map(a => rebaNeckScore(a))).toEqual([1, 1, 2]);
+    expect(rebaNeckScore(10, true)).toBe(2);       // en extensión → 2
     expect([null, 0, 29, 30, 60, 61].map(rebaLegsScore)).toEqual([1, 1, 1, 2, 2, 3]);
     expect([0, 20, 21, 45, 46, 90, 91].map(a => rebaUpperArmScore(a))).toEqual([1, 1, 2, 2, 3, 3, 4]);
     expect(rebaUpperArmScore(60, true)).toBe(2);     // extensión > 20° → 2
@@ -315,29 +318,197 @@ describe('detección de vista lateral vs frontal', () => {
   });
 });
 
-// ── 6. Regresión RULA ─────────────────────────────────────────────────────────
-// Valores esperados obtenidos con calculateRULA ANTES de añadir confianza/vista/REBA.
+// ── 6. RULA (McAtamney & Corlett, 1993) ───────────────────────────────────────
+// Valores esperados tomados de las Tablas A, B y C de McAtamney & Corlett (1993),
+// "RULA: a survey method for the investigation of work-related upper limb disorders",
+// Applied Ergonomics 24(2):91–99.
 
-describe('RULA sin cambios (regresión)', () => {
-  const FRONTAL = makePose({ 0: [0.5, 0.15], 11: [0.42, 0.3], 12: [0.58, 0.3], 13: [0.40, 0.45], 14: [0.60, 0.45], 15: [0.40, 0.58], 16: [0.60, 0.58], 19: [0.40, 0.63], 20: [0.60, 0.63], 23: [0.45, 0.6], 24: [0.55, 0.6], 25: [0.45, 0.78], 26: [0.55, 0.78], 27: [0.45, 0.95], 28: [0.55, 0.95] });
-  const LATERAL = makePose({ 0: [0.32, 0.30], 11: [0.40, 0.35, -0.1], 12: [0.42, 0.35, 0.1], 13: [0.33, 0.48], 14: [0.35, 0.48], 15: [0.25, 0.55], 16: [0.27, 0.55], 19: [0.22, 0.58], 20: [0.24, 0.58], 23: [0.55, 0.6], 24: [0.56, 0.6], 25: [0.50, 0.78], 26: [0.51, 0.78], 27: [0.55, 0.95], 28: [0.56, 0.95] });
-  const MID = makePose({ 0: [0.53, 0.15], 11: [0.42, 0.3], 12: [0.58, 0.3], 13: [0.495, 0.43], 15: [0.615, 0.43], 23: [0.40, 0.6], 24: [0.50, 0.6] });
+/** Operario de frente, erguido, brazos colgando y manos relajadas (postura neutra). */
+function frontHangingPose(): Landmark[] {
+  const a = DEFAULT_ASPECT;
+  const X = (dx: number) => 0.5 + dx / a;
+  return makePose({
+    0: [0.5, 0.18],
+    11: [X(-0.11), 0.3], 12: [X(0.11), 0.3],
+    13: [X(-0.12), 0.45], 14: [X(0.12), 0.45],
+    15: [X(-0.12), 0.58], 16: [X(0.12), 0.58],
+    17: [X(-0.12), 0.63], 18: [X(0.12), 0.63],
+    19: [X(-0.12), 0.63], 20: [X(0.12), 0.63],
+    23: [X(-0.08), 0.6], 24: [X(0.08), 0.6],
+    25: [X(-0.08), 0.8], 26: [X(0.08), 0.8],
+    27: [X(-0.08), 0.98], 28: [X(0.08), 0.98],
+  });
+}
 
-  const cases: [string, number, Landmark[], object][] = [
-    ['frontal', 1, FRONTAL,   { rula: 5, neckAngle: 0,  trunkAngle: 0,  upperArmAngle: 98,  forearmAngle: 172, wristAngle: 90,  risk: 'high' }],
-    ['frontal', 1.1, FRONTAL, { rula: 5, neckAngle: 0,  trunkAngle: 0,  upperArmAngle: 98,  forearmAngle: 172, wristAngle: 90,  risk: 'high' }],
-    ['lateral', 1, LATERAL,   { rula: 7, neckAngle: 60, trunkAngle: 30, upperArmAngle: 118, forearmAngle: 159, wristAngle: 139, risk: 'critical' }],
-    ['lateral', 1.1, LATERAL, { rula: 7, neckAngle: 60, trunkAngle: 30, upperArmAngle: 118, forearmAngle: 159, wristAngle: 139, risk: 'critical' }],
-    ['intermedia', 1, MID,    { rula: 4, neckAngle: 11, trunkAngle: 9,  upperArmAngle: 60,  forearmAngle: 120, wristAngle: 0,   risk: 'medium' }],
-    ['intermedia', 1.1, MID,  { rula: 4, neckAngle: 11, trunkAngle: 9,  upperArmAngle: 60,  forearmAngle: 120, wristAngle: 0,   risk: 'medium' }],
-    ['intermedia', 2, MID,    { rula: 6, neckAngle: 11, trunkAngle: 9,  upperArmAngle: 60,  forearmAngle: 120, wristAngle: 0,   risk: 'high' }],
-  ];
-
-  it.each(cases)('pose %s, rigor %s', (_name, strictness, pose, expected) => {
-    expect(calculateRULA(pose, strictness)).toMatchObject(expected);
+describe('RULA — consultas en tablas publicadas', () => {
+  it('Tabla A (brazo, antebrazo, muñeca, giro de muñeca)', () => {
+    expect(rulaTableA(1, 1, 1, 1)).toBe(1);
+    expect(rulaTableA(1, 1, 1, 2)).toBe(2);
+    expect(rulaTableA(1, 2, 1, 1)).toBe(2);
+    expect(rulaTableA(2, 1, 1, 1)).toBe(2);
+    expect(rulaTableA(3, 2, 2, 1)).toBe(4);
+    expect(rulaTableA(4, 2, 3, 1)).toBe(4);
+    expect(rulaTableA(4, 3, 4, 2)).toBe(6);
+    expect(rulaTableA(5, 2, 3, 1)).toBe(6);
+    expect(rulaTableA(6, 1, 4, 2)).toBe(9);
+    expect(rulaTableA(6, 3, 1, 1)).toBe(9);
   });
 
-  it('añade confianza, vista y REBA sin alterar los campos existentes', () => {
+  it('Tabla B (cuello, tronco, piernas)', () => {
+    expect(rulaTableB(1, 1, 1)).toBe(1);
+    expect(rulaTableB(1, 1, 2)).toBe(3);
+    expect(rulaTableB(2, 3, 1)).toBe(4);
+    expect(rulaTableB(3, 3, 1)).toBe(4);
+    expect(rulaTableB(4, 4, 2)).toBe(7);
+    expect(rulaTableB(5, 3, 2)).toBe(8);
+    expect(rulaTableB(6, 6, 2)).toBe(9);
+  });
+
+  it('Tabla C (puntuación C, puntuación D) y saturación en 8+/7+', () => {
+    expect(rulaTableC(1, 1)).toBe(1);
+    expect(rulaTableC(2, 1)).toBe(2);
+    expect(rulaTableC(2, 4)).toBe(4);
+    expect(rulaTableC(4, 4)).toBe(4);
+    expect(rulaTableC(5, 5)).toBe(6);
+    expect(rulaTableC(1, 7)).toBe(5);
+    expect(rulaTableC(8, 7)).toBe(7);
+    expect(rulaTableC(13, 12)).toBe(7);
+  });
+
+  it('las tablas tienen las dimensiones correctas y son monótonas (control de transcripción)', () => {
+    expect(RULA_TABLE_A).toHaveLength(6);
+    RULA_TABLE_A.forEach(u => { expect(u).toHaveLength(3); u.forEach(l => { expect(l).toHaveLength(4); l.forEach(w => expect(w).toHaveLength(2)); }); });
+    expect(RULA_TABLE_B).toHaveLength(6);
+    RULA_TABLE_B.forEach(n => { expect(n).toHaveLength(6); n.forEach(t => expect(t).toHaveLength(2)); });
+    expect(RULA_TABLE_C).toHaveLength(8);
+    RULA_TABLE_C.forEach(r => expect(r).toHaveLength(7));
+
+    for (let u = 1; u <= 6; u++) for (let l = 1; l <= 3; l++) for (let w = 1; w <= 4; w++) for (let t = 1; t <= 2; t++) {
+      const v = rulaTableA(u, l, w, t);
+      if (u < 6) expect(rulaTableA(u + 1, l, w, t)).toBeGreaterThanOrEqual(v);
+      if (l < 3) expect(rulaTableA(u, l + 1, w, t)).toBeGreaterThanOrEqual(v);
+      if (w < 4) expect(rulaTableA(u, l, w + 1, t)).toBeGreaterThanOrEqual(v);
+      if (t < 2) expect(rulaTableA(u, l, w, t + 1)).toBeGreaterThanOrEqual(v);
+    }
+    for (let n = 1; n <= 6; n++) for (let t = 1; t <= 6; t++) for (let g = 1; g <= 2; g++) {
+      const v = rulaTableB(n, t, g);
+      if (n < 6) expect(rulaTableB(n + 1, t, g)).toBeGreaterThanOrEqual(v);
+      if (t < 6) expect(rulaTableB(n, t + 1, g)).toBeGreaterThanOrEqual(v);
+      if (g < 2) expect(rulaTableB(n, t, g + 1)).toBeGreaterThanOrEqual(v);
+    }
+    for (let c = 1; c <= 8; c++) for (let d = 1; d <= 7; d++) {
+      const v = rulaTableC(c, d);
+      if (c < 8) expect(rulaTableC(c + 1, d)).toBeGreaterThanOrEqual(v);
+      if (d < 7) expect(rulaTableC(c, d + 1)).toBeGreaterThanOrEqual(v);
+    }
+  });
+});
+
+describe('RULA — puntuaciones parciales, límites y niveles de acción', () => {
+  it('niveles de acción → riesgo', () => {
+    expect([1, 2, 3, 4, 5, 6, 7].map(rulaRiskLevel)).toEqual(['low', 'low', 'medium', 'medium', 'high', 'high', 'critical']);
+  });
+
+  it('puntuaciones parciales a partir de ángulos', () => {
+    expect([0, 20, 21, 45, 46, 90, 91].map(a => rulaUpperArmScore(a))).toEqual([1, 1, 2, 2, 3, 3, 4]);
+    expect(rulaUpperArmScore(50, true)).toBe(2);
+    expect([0, 59, 60, 100, 101, 150].map(rulaLowerArmScore)).toEqual([2, 2, 1, 1, 2, 2]);
+    expect([null, 5, 6, 15, 16].map(rulaWristScore)).toEqual([1, 1, 2, 2, 3]);
+    expect([0, 10, 11, 20, 21].map(a => rulaNeckScore(a))).toEqual([1, 1, 2, 2, 3]);
+    expect(rulaNeckScore(15, true)).toBe(4);   // extensión de cuello
+    expect(rulaNeckScore(4, true)).toBe(1);    // dentro de la tolerancia de 5°
+    expect([0, 5, 6, 20, 21, 60, 61].map(rulaTrunkScore)).toEqual([1, 1, 2, 2, 3, 3, 4]);
+  });
+
+  it('la puntuación final siempre está en [1, 7]', () => {
+    expect(rulaFromComponents({ upperArm: 1, lowerArm: 1, wrist: 1, wristTwist: 1, neck: 1, trunk: 1, legs: 1 }).score).toBe(1);
+    const worst = { upperArm: 6, lowerArm: 3, wrist: 4, wristTwist: 2, neck: 6, trunk: 6, legs: 2 };
+    expect(rulaFromComponents(worst).score).toBe(7);
+    expect(rulaFromComponents(worst, { muscleUse: 1, forceLoad: 3 }).score).toBe(7);
+    for (let u = 0; u <= 7; u++) for (const x of [-1, 0, 5]) {
+      const { score } = rulaFromComponents(
+        { upperArm: u, lowerArm: u, wrist: u, wristTwist: u, neck: u, trunk: u, legs: u },
+        { muscleUse: x, forceLoad: x },
+      );
+      expect(score).toBeGreaterThanOrEqual(1);
+      expect(score).toBeLessThanOrEqual(7);
+    }
+  });
+});
+
+describe('RULA desde landmarks (calculateRULA)', () => {
+  it('de pie, neutro, de perfil → 1–2 aceptable', () => {
+    for (const elbow of [80, 0]) { // codo a 80° o brazo colgando
+      const r = calculateRULA(sidePose({ elbow }));
+      expect(r.rula).toBeGreaterThanOrEqual(1);
+      expect(r.rula).toBeLessThanOrEqual(2);
+      expect(r.risk).toBe('low');
+    }
+  });
+
+  it('de pie, neutro, de frente con brazos colgando → 2 aceptable (antes del arreglo: 5 "high")', () => {
+    const r = calculateRULA(frontHangingPose());
+    // Brazo 1 (≈4°), antebrazo 2 (codo ≈0°, fuera de 60–100°), muñeca 1, giro 1 → Tabla A = 2
+    // Cuello 1, tronco 1, piernas 1 → Tabla B = 1. Tabla C[2][1] = 2.
+    expect(r.rulaDetail?.components).toMatchObject({ upperArm: 1, lowerArm: 2, wrist: 1, neck: 1, trunk: 1 });
+    expect(r.rula).toBe(2);
+    expect(r.risk).toBe('low');
+    expect(r.upperArmAngle).toBeLessThan(10);
+    expect(r.wristAngle).toBeLessThan(5);
+  });
+
+  it('brazos > 90°, cuello > 20° y tronco 20–60° → puntuación calculada a mano', () => {
+    const pose = sidePose({ trunk: 40, neck: 30, upperArm: 100, elbow: 30, wrist: 25 });
+    // Cálculo a mano con las tablas publicadas:
+    //   Brazo 100° → 4 · antebrazo (codo 30°) → 2 · muñeca 25° → 3 · giro (supuesto) → 1
+    //   Tabla A[brazo 4][antebrazo 2][muñeca 3][giro 1] = 4
+    //   Cuello 30° → 3 · tronco 40° → 3 · piernas (supuesto) → 1
+    //   Tabla B[cuello 3][tronco 3][piernas 1] = 4
+    //   Uso muscular 0 y carga 0 → C = 4, D = 4 → Tabla C[4][4] = 4 (nivel de acción 2, 'medium').
+    //   Con postura estática (> 1 min) → uso muscular 1: C = 5, D = 5 → Tabla C[5][5] = 6 ('high').
+    //   Con además carga 2–10 kg estática (2): C = 7, D = 7 → Tabla C[7][7] = 7 ('critical').
+    const r = calculateRULA(pose);
+    expect(r.rulaDetail?.components).toEqual({ upperArm: 4, lowerArm: 2, wrist: 3, wristTwist: 1, neck: 3, trunk: 3, legs: 1 });
+    expect(r.rulaDetail?.tableA).toBe(4);
+    expect(r.rulaDetail?.tableB).toBe(4);
+    expect(r.rula).toBe(4);
+    expect(r.risk).toBe('medium');
+    expect(r.trunkAngle).toBe(40);
+    expect(r.neckAngle).toBe(30);
+    expect(r.upperArmAngle).toBe(100);
+    expect(r.forearmAngle).toBe(30);
+    expect(r.wristAngle).toBe(25);
+
+    const statico = calculateRULAFromPose(pose, { muscleUse: 1 })!;
+    expect(statico.score).toBe(6);
+    expect(statico.risk).toBe('high');
+    expect(calculateRULAFromPose(pose, { muscleUse: 1, forceLoad: 2 })!.score).toBe(7);
+  });
+
+  it('el cuello en extensión puntúa 4', () => {
+    const r = calculateRULA(sidePose({ neck: -25 }));
+    expect(r.rulaDetail?.components.neck).toBe(4);
+  });
+
+  it('forearmAngle es la flexión de codo y alimenta la puntuación del antebrazo', () => {
+    const ok = calculateRULA(sidePose({ elbow: 80 }));
+    const bad = calculateRULA(sidePose({ elbow: 130 }));
+    expect(ok.forearmAngle).toBe(80);
+    expect(ok.rulaDetail?.components.lowerArm).toBe(1);
+    expect(bad.forearmAngle).toBe(130);
+    expect(bad.rulaDetail?.components.lowerArm).toBe(2);
+  });
+
+  it('de frente con ambos brazos visibles evalúa el brazo más exigido', () => {
+    const p = frontHangingPose();
+    p[14] = { ...p[14], x: 0.5 + 0.25 / DEFAULT_ASPECT, y: 0.3 };   // codo derecho a la altura del hombro
+    p[16] = { ...p[16], x: 0.5 + 0.38 / DEFAULT_ASPECT, y: 0.3 };
+    const r = calculateRULA(p);
+    expect(r.rulaDetail?.side).toBe('derecho');
+    expect(r.rulaDetail?.components.upperArm).toBeGreaterThanOrEqual(3);
+  });
+
+  it('añade confianza, vista y REBA', () => {
     const r = calculateRULA(sidePose({ trunk: 40 }));
     expect(r.confidence?.tronco.level).toBe('alta');
     expect(r.view?.view).toBe('lateral');
@@ -345,8 +516,35 @@ describe('RULA sin cambios (regresión)', () => {
     expect(r.overallConfidence).toBeGreaterThan(0);
   });
 
-  it('pose insuficiente → mismo resultado vacío que antes', () => {
+  it('pose insuficiente → resultado vacío', () => {
     expect(calculateRULA([], 1)).toEqual({ rula: 1, neckAngle: 0, trunkAngle: 0, upperArmAngle: 0, forearmAngle: 0, wristAngle: 0, risk: 'low' });
+  });
+});
+
+describe('RULA — rigor (rulaStrictness)', () => {
+  it('el valor por defecto aplica el método publicado', () => {
+    expect(DEFAULT_CLASSIFIER_CONFIG.rulaStrictness).toBe(1);
+    const pose = sidePose({ trunk: 15, neck: 15, upperArm: 38, elbow: 95, wrist: 9 });
+    expect(calculateRULA(pose, DEFAULT_CLASSIFIER_CONFIG.rulaStrictness)).toEqual(calculateRULA(pose));
+    expect(calculateRULA(pose).rulaDetail?.components).toMatchObject({ trunk: 2, neck: 2, upperArm: 2, lowerArm: 1, wrist: 2 });
+  });
+
+  it('multiplica la desviación de cada ángulo antes de clasificarla', () => {
+    const pose = sidePose({ trunk: 15, neck: 15, upperArm: 38, elbow: 95, wrist: 9 });
+    // ×1.5: tronco 22.5° → 3, cuello 22.5° → 3, brazo 57° → 3, codo 80+15×1.5 = 102.5° → 2, muñeca 13.5° → 2
+    expect(calculateRULA(pose, 1.5).rulaDetail?.components).toMatchObject({ trunk: 3, neck: 3, upperArm: 3, lowerArm: 2, wrist: 2 });
+    // ×0.5: tronco 7.5° → 2, cuello 7.5° → 1, brazo 19° → 1, codo 87.5° → 1, muñeca 4.5° → 1
+    expect(calculateRULA(pose, 0.5).rulaDetail?.components).toMatchObject({ trunk: 2, neck: 1, upperArm: 1, lowerArm: 1, wrist: 1 });
+    // Los ángulos mostrados no se escalan.
+    expect(calculateRULA(pose, 1.5).trunkAngle).toBe(15);
+  });
+
+  it('más rigor nunca baja la puntuación', () => {
+    const poses = [sidePose(), sidePose({ trunk: 15, neck: 12, upperArm: 30, elbow: 50, wrist: 8 }), frontHangingPose(), sidePose({ trunk: 40, neck: 30, upperArm: 100 })];
+    for (const p of poses) {
+      const scores = [0.5, 0.8, 1, 1.2, 1.5, 2].map(s => calculateRULA(p, s).rula);
+      for (let i = 1; i < scores.length; i++) expect(scores[i]).toBeGreaterThanOrEqual(scores[i - 1]);
+    }
   });
 });
 
@@ -379,6 +577,11 @@ describe('PostureAnalyzer — semáforo y guía de vista', () => {
     const dots = host!.querySelectorAll('[data-confidence]');
     expect(dots).toHaveLength(5);
     dots.forEach(d => expect(d.getAttribute('title')).toMatch(/confianza (alta|media|baja)/));
+    // El tooltip de RULA documenta la fuente y los supuestos
+    const rulaTip = host!.querySelector('[title^="RULA (McAtamney"]')?.getAttribute('title') ?? '';
+    expect(rulaTip).toMatch(/giro de muñeca en rango medio/);
+    expect(rulaTip).toMatch(/piernas apoyadas/);
+    expect(rulaTip).toMatch(/uso muscular 0 y carga 0/);
   });
 
   it('vista lateral: no muestra la guía', () => {

@@ -71,21 +71,35 @@ export interface RebaResult {
   overallConfidence: number; // 0–1
 }
 
+/** Desglose de RULA (McAtamney y Corlett, 1993). */
+export interface RulaDetail {
+  components: { upperArm: number; lowerArm: number; wrist: number; wristTwist: number; neck: number; trunk: number; legs: number };
+  tableA: number;          // brazo/antebrazo/muñeca
+  tableB: number;          // cuello/tronco/piernas
+  scoreC: number;          // Tabla A + uso muscular + carga
+  scoreD: number;          // Tabla B + uso muscular + carga
+  side: 'izquierdo' | 'derecho';
+  strictness: number;      // rigor aplicado (1 = método publicado)
+  wristAssumed: boolean;   // mano no visible → muñeca asumida neutra
+}
+
 export interface PostureScore {
-  rula: number;
-  neckAngle: number;
-  trunkAngle: number;
-  upperArmAngle: number;
-  forearmAngle: number;
-  wristAngle: number;
-  risk: 'low' | 'medium' | 'high' | 'critical';
+  rula: number;            // 1–7 (Tabla C de RULA)
+  // Ángulos relativos al cuerpo, en grados, del lado analizado:
+  neckAngle: number;       // cuello respecto al eje del tronco
+  trunkAngle: number;      // tronco respecto a la vertical
+  upperArmAngle: number;   // brazo respecto al eje del tronco
+  forearmAngle: number;    // flexión de codo (0 = brazo estirado); alimenta la puntuación del antebrazo
+  wristAngle: number;      // mano respecto al antebrazo (0 si la mano no es visible)
+  risk: 'low' | 'medium' | 'high' | 'critical'; // niveles de acción RULA: 1–2 / 3–4 / 5–6 / 7
   // Campos opcionales (ergonomía honesta). Opcionales para no romper otros consumidores.
-  /** Confianza por segmento de los ángulos RULA mostrados (lado izquierdo). */
+  /** Confianza por segmento de los ángulos RULA mostrados (lado analizado). */
   confidence?: SegmentConfidenceMap;
   /** Confianza global 0–1 (promedio de cuello, tronco, brazo, antebrazo y muñeca). */
   overallConfidence?: number;
   view?: ViewEstimate;
   reba?: RebaResult;
+  rulaDetail?: RulaDetail;
 }
 
 export interface HeadPose {
@@ -194,7 +208,7 @@ export interface ClassifierConfig {
   debounceFrames: number;  // frames estables antes de confirmar un therblig
   decisionDelayMs: number; // tiempo mínimo (ms) que un therblig debe sostenerse antes de confirmarse
   criticality: number;     // rigor del análisis de therbligs (>1 = más crítico, detecta más desperdicio)
-  rulaStrictness: number;  // multiplicador de rigor RULA (1 = estándar)
+  rulaStrictness: number;  // rigor RULA: multiplica la desviación de cada ángulo antes de clasificarlo (1 = método publicado)
   drowsyEAR: number;       // EAR bajo este umbral → somnolencia/fatiga
 }
 
@@ -206,6 +220,6 @@ export const DEFAULT_CLASSIFIER_CONFIG: ClassifierConfig = {
   debounceFrames: 10,
   decisionDelayMs: 350,
   criticality: 1.25,
-  rulaStrictness: 1.1,
+  rulaStrictness: 1,
   drowsyEAR: 0.21,
 };

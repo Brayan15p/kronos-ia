@@ -13,14 +13,15 @@
  *  1. Una confianza por segmento (visibilidad de los landmarks × fiabilidad conocida del
  *     segmento × factor según la vista de la cámara).
  *  2. Una estimación de la vista (lateral / oblicua / frontal).
- *  3. REBA (Hignett & McAtamney, 2000) junto al RULA existente.
+ *  3. RULA (McAtamney & Corlett, 1993) y REBA (Hignett & McAtamney, 2000) con sus tablas
+ *     publicadas y ángulos relativos al cuerpo (measureBody).
  *
  * Nada de esto equivale a una evaluación ergonómica normativa; los resultados deben
  * confirmarse con un evaluador cuando la confianza sea baja.
  */
 import type {
   Landmark, ErgoSegment, ConfidenceLevel, SegmentConfidence, SegmentConfidenceMap,
-  CameraView, ViewEstimate, RebaRisk, RebaResult,
+  CameraView, ViewEstimate, RebaRisk, RebaResult, RulaDetail,
 } from './types';
 
 // ── Índices de MediaPipe Pose (33 landmarks, lado = lado del PROPIO operario) ──
@@ -30,7 +31,7 @@ export const POSE_IDX = {
   derecho:   { ear: 8,  shoulder: 12, elbow: 14, wrist: 16, pinky: 18, index: 20, hip: 24, knee: 26, ankle: 28 },
 } as const;
 
-type Side = 'izquierdo' | 'derecho';
+export type Side = 'izquierdo' | 'derecho';
 
 /**
  * Relación ancho/alto del video. Los landmarks vienen normalizados (x ÷ ancho, y ÷ alto),
@@ -326,14 +327,16 @@ export function rebaFromComponents(c: RebaComponents, extras: RebaExtras = {}) {
 // Puntuaciones parciales a partir de ángulos (sin los ajustes no observables).
 export function rebaTrunkScore(angle: number, extension = false): number {
   // "Erguido" con tolerancia de 5° por ruido de la estimación de pose.
-  if (angle <= 5) return 1;
+  if (angle <= NEUTRAL_TOLERANCE) return 1;
   if (angle <= 20) return 2;
   if (extension || angle <= 60) return 3;
   return 4;
 }
 
-export function rebaNeckScore(angle: number): number {
-  // 0–20° de flexión → 1; > 20° de flexión o extensión → 2. (+1 por giro/inclinación lateral: no medido.)
+export function rebaNeckScore(angle: number, extension = false): number {
+  // 0–20° de flexión → 1; > 20° de flexión o en extensión → 2. (+1 por giro/inclinación lateral: no medido.)
+  // Extensión con tolerancia de 5° por ruido.
+  if (extension && angle > NEUTRAL_TOLERANCE) return 2;
   return angle <= 20 ? 1 : 2;
 }
 
@@ -363,36 +366,47 @@ export function rebaWristScore(angle: number | null): number {
   return angle > 15 ? 2 : 1;
 }
 
-export interface RebaOptions extends RebaExtras {
-  aspect?: number;
-  view?: ViewEstimate;
+// ── Medición corporal compartida (RULA y REBA) ────────────────────────────────
+
+/** Tolerancia (°) para considerar "neutro/erguido" un segmento, por ruido de la pose. */
+export const NEUTRAL_TOLERANCE = 5;
+/** Dos brazos con visibilidad dentro de este margen se consideran igual de visibles. */
+const ARM_VISIBILITY_TIE = 0.05;
+
+export interface ArmMeasure {
+  upperArm: number;          // ángulo brazo–eje del tronco (°)
+  upperArmExt: boolean;      // true = extensión (brazo hacia atrás)
+  elbow: number;             // flexión de codo (0 = brazo estirado)
+  wrist: number | null;      // desviación mano–antebrazo (°); null = mano no visible
+  visibility: number;        // visibilidad mínima hombro/codo/muñeca
+}
+
+export interface BodyMeasure {
+  view: ViewEstimate;
+  facing: -1 | 0 | 1;        // hacia dónde mira el operario en x; 0 = desconocido
+  trunk: number;             // inclinación del tronco respecto a la vertical (°)
+  trunkExt: boolean;
+  neck: number;              // ángulo cuello–eje del tronco (°)
+  neckExt: boolean;
+  knee: number | null;       // mayor flexión de rodilla visible (°)
+  arms: Record<Side, ArmMeasure | null>;
 }
 
 /**
- * Calcula REBA desde los landmarks de pose de una sola cámara.
- *
- * - Lado analizado: el brazo con mejor visibilidad (de perfil, el brazo lejano queda ocluido).
- * - Ángulos de brazo y cuello relativos al eje del tronco (no a la vertical).
- * - Piernas: flexión de rodilla si cadera, rodilla y tobillo son visibles; si no, se asumen
- *   neutras (puntuación 1) y la confianza de piernas baja.
- * - Muñeca: ángulo entre antebrazo y mano (muñeca → punto medio índice/meñique); si la mano no
- *   es visible se asume neutra (1).
- * - Ajustes de giro, inclinación lateral, hombro elevado, abducción y apoyo no se miden.
- * - Carga, agarre y actividad = 0 salvo que se indiquen (ver RebaExtras).
+ * Mide los ángulos corporales (relativos al cuerpo) a partir de una sola cámara.
+ * - Tronco: respecto a la vertical. Brazo y cuello: respecto al eje del tronco.
+ * - Flexión vs extensión solo se distingue con vista no frontal (según hacia dónde apunta la
+ *   nariz); si no se sabe, se trata como flexión (criterio conservador).
+ * - Cuello: de perfil, oreja respecto al hombro (la nariz siempre queda adelantada);
+ *   de frente, nariz respecto al punto medio de hombros.
+ * - Muñeca: ángulo entre antebrazo y mano (muñeca → punto medio índice/meñique).
  */
-export function calculateREBA(pose: Landmark[], opts: RebaOptions = {}): RebaResult | null {
+export function measureBody(pose: Landmark[], aspect = DEFAULT_ASPECT, viewIn?: ViewEstimate): BodyMeasure | null {
   if (!pose || pose.length < 25) return null;
-  const aspect = opts.aspect ?? DEFAULT_ASPECT;
-  const view = opts.view ?? estimateCameraView(pose, aspect);
   const L = POSE_IDX.izquierdo, R = POSE_IDX.derecho;
   const core = [POSE_IDX.nose, L.shoulder, R.shoulder, L.hip, R.hip];
   if (core.some(i => !pose[i])) return null;
-
-  // Lado con el brazo más visible (empate → izquierdo, igual que RULA).
-  const armVis = (s: Side) => minVisibility(pose, [POSE_IDX[s].shoulder, POSE_IDX[s].elbow, POSE_IDX[s].wrist]);
-  const side: Side = armVis('derecho') > armVis('izquierdo') ? 'derecho' : 'izquierdo';
-  const S = POSE_IDX[side];
-  if (!pose[S.elbow] || !pose[S.wrist]) return null;
+  const view = viewIn ?? estimateCameraView(pose, aspect);
 
   const at = (i: number) => P(pose[i], aspect);
   const shMid = midpoint(at(L.shoulder), at(R.shoulder));
@@ -401,23 +415,24 @@ export function calculateREBA(pose: Landmark[], opts: RebaOptions = {}): RebaRes
   const trunkUp = sub(shMid, hipMid);
   const trunkDown = sub(hipMid, shMid);
 
-  // Hacia dónde mira el operario en x (solo con vista no frontal): permite distinguir
-  // flexión de extensión. 0 = desconocido → se trata como flexión (criterio conservador).
-  const dxFace = nose.x - shMid.x;
-  const facing = view.view !== 'frontal' && Math.abs(dxFace) > 0.02 ? Math.sign(dxFace) : 0;
+  // Oreja más visible (solo se usa de perfil/oblicua).
+  const earSide: Side = landmarkVisibility(pose[R.ear]) > landmarkVisibility(pose[L.ear]) ? 'derecho' : 'izquierdo';
+  const E = POSE_IDX[earSide];
+  const useEar = view.view !== 'frontal' && !!pose[E.ear] && landmarkVisibility(pose[E.ear]) >= MIN_VISIBLE;
 
-  // Tronco: inclinación respecto a la vertical.
-  const trunkAngle = angleBetween(trunkUp, { x: 0, y: -1 });
+  // Hacia dónde mira: la nariz siempre queda por delante de la oreja (aunque el cuello se
+  // extienda); sin oreja visible se compara con el punto medio de hombros.
+  const dxFace = nose.x - (useEar ? at(E.ear).x : shMid.x);
+  const facing = (view.view !== 'frontal' && Math.abs(dxFace) > 0.02 ? Math.sign(dxFace) : 0) as -1 | 0 | 1;
+
+  const trunk = angleBetween(trunkUp, { x: 0, y: -1 });
   const trunkExt = facing !== 0 && (shMid.x - hipMid.x) * facing < 0;
 
-  // Cuello: de perfil, oreja respecto al hombro (la nariz siempre queda adelantada);
-  // de frente, nariz respecto al punto medio de hombros.
-  const ear = pose[S.ear];
-  const useEar = view.view !== 'frontal' && !!ear && landmarkVisibility(ear) >= MIN_VISIBLE;
-  const neckVec = useEar ? sub(at(S.ear), at(S.shoulder)) : sub(nose, shMid);
-  const neckAngle = angleBetween(neckVec, trunkUp);
+  const neckVec = useEar ? sub(at(E.ear), at(E.shoulder)) : sub(nose, shMid);
+  const neck = angleBetween(neckVec, trunkUp);
+  // Flexión = cabeza hacia donde mira el operario.
+  const neckExt = facing !== 0 && cross(trunkUp, neckVec) * facing < 0;
 
-  // Piernas: mayor flexión de rodilla entre los lados visibles.
   let knee: number | null = null;
   for (const s of ['izquierdo', 'derecho'] as Side[]) {
     const k = POSE_IDX[s];
@@ -426,52 +441,306 @@ export function calculateREBA(pose: Landmark[], opts: RebaOptions = {}): RebaRes
       knee = knee == null ? flex : Math.max(knee, flex);
     }
   }
-  const legsAssumed = knee == null;
 
-  // Brazo: ángulo entre el brazo y el eje del tronco hacia abajo.
-  const armVec = sub(at(S.elbow), at(S.shoulder));
-  const upperArmAngle = angleBetween(armVec, trunkDown);
-  const armExt = facing !== 0 && cross(trunkDown, armVec) * facing > 0;
+  const arm = (s: Side): ArmMeasure | null => {
+    const S = POSE_IDX[s];
+    if (!pose[S.shoulder] || !pose[S.elbow] || !pose[S.wrist]) return null;
+    const armVec = sub(at(S.elbow), at(S.shoulder));
+    let wrist: number | null = null;
+    const handIdx = [S.index, S.pinky].filter(i => !!pose[i]);
+    if (handIdx.length && minVisibility(pose, [S.elbow, S.wrist, ...handIdx]) >= MIN_VISIBLE) {
+      const hand = handIdx.length === 2 ? midpoint(at(S.index), at(S.pinky)) : at(handIdx[0]);
+      wrist = angleBetween(sub(at(S.wrist), at(S.elbow)), sub(hand, at(S.wrist)));
+    }
+    return {
+      upperArm: angleBetween(armVec, trunkDown),
+      upperArmExt: facing !== 0 && cross(trunkDown, armVec) * facing > 0,
+      elbow: 180 - angleAt(at(S.shoulder), at(S.elbow), at(S.wrist)),
+      wrist,
+      visibility: minVisibility(pose, [S.shoulder, S.elbow, S.wrist]),
+    };
+  };
 
-  // Antebrazo: flexión de codo (0 = brazo estirado).
-  const elbow = 180 - angleAt(at(S.shoulder), at(S.elbow), at(S.wrist));
+  return { view, facing, trunk, trunkExt, neck, neckExt, knee, arms: { izquierdo: arm('izquierdo'), derecho: arm('derecho') } };
+}
 
-  // Muñeca: desviación de la mano respecto al eje del antebrazo.
-  let wrist: number | null = null;
-  const handIdx = [S.index, S.pinky].filter(i => !!pose[i]);
-  if (handIdx.length && minVisibility(pose, [S.elbow, S.wrist, ...handIdx]) >= MIN_VISIBLE) {
-    const hand = handIdx.length === 2 ? midpoint(at(S.index), at(S.pinky)) : at(handIdx[0]);
-    wrist = angleBetween(sub(at(S.wrist), at(S.elbow)), sub(hand, at(S.wrist)));
-  }
-  const wristAssumed = wrist == null;
+/**
+ * Elige el brazo a evaluar: el más visible (de perfil, el lejano queda ocluido). Si ambos son
+ * igual de visibles (p. ej. de frente), se toma el de PEOR puntuación, como haría un evaluador
+ * que analiza el lado más exigido. Empate → izquierdo.
+ */
+export function pickArmSide(m: BodyMeasure, armScore: (a: ArmMeasure) => number): Side | null {
+  const sides = (['izquierdo', 'derecho'] as Side[]).filter(s => m.arms[s]);
+  if (!sides.length) return null;
+  const best = Math.max(...sides.map(s => m.arms[s]!.visibility));
+  const candidates = sides.filter(s => m.arms[s]!.visibility >= best - ARM_VISIBILITY_TIE);
+  return candidates.reduce((a, b) => (armScore(m.arms[b]!) > armScore(m.arms[a]!) ? b : a));
+}
+
+export interface RebaOptions extends RebaExtras {
+  aspect?: number;
+  view?: ViewEstimate;
+}
+
+/**
+ * Calcula REBA desde los landmarks de pose de una sola cámara (ver measureBody).
+ *
+ * - Piernas: flexión de rodilla si cadera, rodilla y tobillo son visibles; si no, se asumen
+ *   neutras (puntuación 1) y la confianza de piernas baja.
+ * - Muñeca: si la mano no es visible se asume neutra (1).
+ * - Ajustes de giro, inclinación lateral, hombro elevado, abducción y apoyo no se miden.
+ * - Carga, agarre y actividad = 0 salvo que se indiquen (ver RebaExtras).
+ */
+export function calculateREBA(pose: Landmark[], opts: RebaOptions = {}): RebaResult | null {
+  const aspect = opts.aspect ?? DEFAULT_ASPECT;
+  const m = measureBody(pose, aspect, opts.view);
+  if (!m) return null;
+  const armB = (a: ArmMeasure) =>
+    rebaTableB(rebaUpperArmScore(a.upperArm, a.upperArmExt), rebaLowerArmScore(a.elbow), rebaWristScore(a.wrist));
+  const side = pickArmSide(m, armB);
+  if (!side) return null;
+  const arm = m.arms[side]!;
+  const legsAssumed = m.knee == null;
+  const wristAssumed = arm.wrist == null;
 
   const components: RebaComponents = {
-    trunk: rebaTrunkScore(trunkAngle, trunkExt),
-    neck: rebaNeckScore(neckAngle),
-    legs: rebaLegsScore(knee),
-    upperArm: rebaUpperArmScore(upperArmAngle, armExt),
-    lowerArm: rebaLowerArmScore(elbow),
-    wrist: rebaWristScore(wrist),
+    trunk: rebaTrunkScore(m.trunk, m.trunkExt),
+    neck: rebaNeckScore(m.neck, m.neckExt),
+    legs: rebaLegsScore(m.knee),
+    upperArm: rebaUpperArmScore(arm.upperArm, arm.upperArmExt),
+    lowerArm: rebaLowerArmScore(arm.elbow),
+    wrist: rebaWristScore(arm.wrist),
   };
   const res = rebaFromComponents(components, opts);
-  const confidence = computeSegmentConfidences(pose, side, view.view, { piernas: legsAssumed, muneca: wristAssumed });
+  const confidence = computeSegmentConfidences(pose, side, m.view.view, { piernas: legsAssumed, muneca: wristAssumed });
 
   return {
     ...res,
     components,
     angles: {
-      trunk: Math.round(trunkAngle),
-      neck: Math.round(neckAngle),
-      knee: knee == null ? null : Math.round(knee),
-      upperArm: Math.round(upperArmAngle),
-      elbow: Math.round(elbow),
-      wrist: wrist == null ? null : Math.round(wrist),
+      trunk: Math.round(m.trunk),
+      neck: Math.round(m.neck),
+      knee: m.knee == null ? null : Math.round(m.knee),
+      upperArm: Math.round(arm.upperArm),
+      elbow: Math.round(arm.elbow),
+      wrist: arm.wrist == null ? null : Math.round(arm.wrist),
     },
     side,
     legsAssumed,
     wristAssumed,
     confidence,
     overallConfidence: overallConfidence(confidence, ['cuello', 'tronco', 'piernas', 'brazo', 'antebrazo', 'muneca']),
+  };
+}
+
+// ── RULA (McAtamney & Corlett, 1993) ─────────────────────────────────────────
+//
+// Fuente: McAtamney L, Corlett EN. "RULA: a survey method for the investigation of
+// work-related upper limb disorders". Applied Ergonomics 1993; 24(2): 91–99.
+// Tablas A, B y C transcritas de la hoja de puntuación RULA ampliamente reproducida a partir
+// de ese artículo. Las tablas son monótonas (comprobado en las pruebas).
+// Celdas a cotejar con el original si se requiere exactitud (son las que más varían entre
+// reproducciones): Tabla B, Cuello=1/Tronco=1/Piernas=2 (= 3); Tabla A, fila Brazo=1/
+// Antebrazo=1 con Muñeca=1 y giro=2 (= 2); Tabla C, fila C=2 (2,2,3,4,4,5,5).
+
+/** Tabla A [brazo 1–6][antebrazo 1–3][muñeca 1–4][giro de muñeca 1–2]. */
+export const RULA_TABLE_A: readonly (readonly (readonly (readonly number[])[])[])[] = [
+  [ // Brazo 1
+    [[1, 2], [2, 2], [2, 3], [3, 3]],
+    [[2, 2], [2, 2], [3, 3], [3, 3]],
+    [[2, 3], [3, 3], [3, 3], [4, 4]],
+  ],
+  [ // Brazo 2
+    [[2, 3], [3, 3], [3, 4], [4, 4]],
+    [[3, 3], [3, 3], [3, 4], [4, 4]],
+    [[3, 4], [4, 4], [4, 4], [5, 5]],
+  ],
+  [ // Brazo 3
+    [[3, 3], [4, 4], [4, 4], [5, 5]],
+    [[3, 4], [4, 4], [4, 4], [5, 5]],
+    [[4, 4], [4, 4], [4, 5], [5, 5]],
+  ],
+  [ // Brazo 4
+    [[4, 4], [4, 4], [4, 5], [5, 5]],
+    [[4, 4], [4, 4], [4, 5], [5, 5]],
+    [[4, 4], [4, 5], [5, 5], [6, 6]],
+  ],
+  [ // Brazo 5
+    [[5, 5], [5, 5], [5, 6], [6, 7]],
+    [[5, 6], [6, 6], [6, 7], [7, 7]],
+    [[6, 6], [6, 7], [7, 7], [7, 8]],
+  ],
+  [ // Brazo 6
+    [[7, 7], [7, 7], [7, 8], [8, 9]],
+    [[8, 8], [8, 8], [8, 9], [9, 9]],
+    [[9, 9], [9, 9], [9, 9], [9, 9]],
+  ],
+];
+
+/** Tabla B [cuello 1–6][tronco 1–6][piernas 1–2]. */
+export const RULA_TABLE_B: readonly (readonly (readonly number[])[])[] = [
+  [[1, 3], [2, 3], [3, 4], [5, 5], [6, 6], [7, 7]],
+  [[2, 3], [2, 3], [4, 5], [5, 5], [6, 7], [7, 7]],
+  [[3, 3], [3, 4], [4, 5], [5, 6], [6, 7], [7, 7]],
+  [[5, 5], [5, 6], [6, 7], [7, 7], [7, 7], [8, 8]],
+  [[7, 7], [7, 7], [7, 8], [8, 8], [8, 8], [8, 8]],
+  [[8, 8], [8, 8], [8, 8], [8, 9], [9, 9], [9, 9]],
+];
+
+/** Tabla C [puntuación C 1–8+][puntuación D 1–7+] → puntuación final 1–7. */
+export const RULA_TABLE_C: readonly (readonly number[])[] = [
+  [1, 2, 3, 3, 4, 5, 5],
+  [2, 2, 3, 4, 4, 5, 5],
+  [3, 3, 3, 4, 4, 5, 6],
+  [3, 3, 3, 4, 5, 6, 6],
+  [4, 4, 4, 5, 6, 7, 7],
+  [4, 4, 5, 6, 6, 7, 7],
+  [5, 5, 6, 6, 7, 7, 7],
+  [5, 5, 6, 7, 7, 7, 7],
+];
+
+export function rulaTableA(upperArm: number, lowerArm: number, wrist: number, wristTwist = 1): number {
+  return RULA_TABLE_A[ci(upperArm, 6)][ci(lowerArm, 3)][ci(wrist, 4)][ci(wristTwist, 2)];
+}
+
+export function rulaTableB(neck: number, trunk: number, legs = 1): number {
+  return RULA_TABLE_B[ci(neck, 6)][ci(trunk, 6)][ci(legs, 2)];
+}
+
+/** Puntuación C ≥ 8 y D ≥ 7 usan la última fila/columna, como en la hoja publicada. */
+export function rulaTableC(scoreC: number, scoreD: number): number {
+  return RULA_TABLE_C[ci(scoreC, 8)][ci(scoreD, 7)];
+}
+
+/** Niveles de acción RULA → riesgo: 1–2 low, 3–4 medium, 5–6 high, 7 critical. */
+export function rulaRiskLevel(score: number): 'low' | 'medium' | 'high' | 'critical' {
+  if (score <= 2) return 'low';
+  if (score <= 4) return 'medium';
+  if (score <= 6) return 'high';
+  return 'critical';
+}
+
+// Puntuaciones parciales RULA a partir de ángulos (sin los ajustes no observables).
+export function rulaUpperArmScore(angle: number, extension = false): number {
+  // −20° a 20° → 1; > 20° extensión o 20–45° flexión → 2; 45–90° → 3; > 90° → 4.
+  // (+1 hombro elevado, +1 abducción, −1 brazo apoyado: no medidos.)
+  return rebaUpperArmScore(angle, extension); // mismas bandas que REBA
+}
+
+export function rulaLowerArmScore(elbowFlexion: number): number {
+  // 60–100° → 1; < 60° o > 100° → 2. (+1 si cruza la línea media o trabaja hacia el lado: no medido.)
+  return elbowFlexion >= 60 && elbowFlexion <= 100 ? 1 : 2;
+}
+
+export function rulaWristScore(angle: number | null): number {
+  // Neutra → 1; 0–15° flexión/extensión → 2; > 15° → 3. (+1 desviación radial/cubital: no medido.)
+  // "Neutra" con tolerancia de 5°. Mano no visible → se asume neutra (1).
+  if (angle == null || angle <= NEUTRAL_TOLERANCE) return 1;
+  return angle <= 15 ? 2 : 3;
+}
+
+export function rulaNeckScore(angle: number, extension = false): number {
+  // 0–10° flexión → 1; 10–20° → 2; > 20° → 3; en extensión → 4. (+1 giro, +1 inclinación lateral: no medidos.)
+  if (extension && angle > NEUTRAL_TOLERANCE) return 4;
+  if (angle <= 10) return 1;
+  if (angle <= 20) return 2;
+  return 3;
+}
+
+export function rulaTrunkScore(angle: number): number {
+  // Erguido (o sentado bien apoyado) → 1; 0–20° → 2; 20–60° → 3; > 60° → 4.
+  // (+1 giro, +1 inclinación lateral: no medidos.) Erguido con tolerancia de 5°.
+  if (angle <= NEUTRAL_TOLERANCE) return 1;
+  if (angle <= 20) return 2;
+  if (angle <= 60) return 3;
+  return 4;
+}
+
+/**
+ * Datos que la cámara NO puede observar. Valores por defecto (supuestos):
+ *  - wristTwist = 1: giro de muñeca en rango medio (2 = cerca del final del rango).
+ *  - legs = 1: piernas y pies apoyados y equilibrados (2 = no).
+ *  - muscleUse = 0: +1 si la postura es estática > 1 min o se repite ≥ 4 veces/min.
+ *  - forceLoad = 0: 0 (< 2 kg intermitente) … 3 (> 10 kg o golpes).
+ * Se suman a las puntuaciones C (brazo/muñeca) y D (cuello/tronco/piernas) por igual.
+ * Asumir estos valores puede SUBESTIMAR el riesgo; el evaluador debe completarlos.
+ */
+export interface RulaExtras { wristTwist?: number; legs?: number; muscleUse?: number; forceLoad?: number }
+
+export interface RulaComponents { upperArm: number; lowerArm: number; wrist: number; wristTwist: number; neck: number; trunk: number; legs: number }
+
+/** Combina las puntuaciones parciales con las Tablas A, B y C. */
+export function rulaFromComponents(c: RulaComponents, extras: Pick<RulaExtras, 'muscleUse' | 'forceLoad'> = {}) {
+  const muscle = clamp(Math.round(extras.muscleUse ?? 0), 0, 1);
+  const force = clamp(Math.round(extras.forceLoad ?? 0), 0, 3);
+  const tableA = rulaTableA(c.upperArm, c.lowerArm, c.wrist, c.wristTwist);
+  const tableB = rulaTableB(c.neck, c.trunk, c.legs);
+  const scoreC = tableA + muscle + force;
+  const scoreD = tableB + muscle + force;
+  const score = rulaTableC(scoreC, scoreD);
+  return { score, risk: rulaRiskLevel(score), tableA, tableB, scoreC, scoreD };
+}
+
+export interface RulaOptions extends RulaExtras {
+  aspect?: number;
+  view?: ViewEstimate;
+  /**
+   * Rigor (ClassifierConfig.rulaStrictness). Multiplica la desviación de cada ángulo respecto
+   * a su posición neutra ANTES de clasificarlo en bandas (para el codo, la distancia al centro
+   * de la banda neutra 60–100°, es decir 80°). 1 = método publicado; 1.5 = un tronco a 30° se
+   * clasifica como si estuviera a 45°. Equivale a dividir los umbrales por el rigor.
+   */
+  strictness?: number;
+}
+
+export interface RulaFromPose {
+  score: number;
+  risk: 'low' | 'medium' | 'high' | 'critical';
+  detail: RulaDetail;
+  /** Ángulos medidos (sin escalar por el rigor), relativos al cuerpo. */
+  angles: { neck: number; trunk: number; upperArm: number; elbow: number; wrist: number | null };
+}
+
+/**
+ * RULA desde landmarks (ver measureBody). Lado: el brazo más visible; si ambos se ven igual,
+ * el de peor puntuación de Tabla A.
+ */
+export function calculateRULAFromPose(pose: Landmark[], opts: RulaOptions = {}): RulaFromPose | null {
+  const aspect = opts.aspect ?? DEFAULT_ASPECT;
+  const m = measureBody(pose, aspect, opts.view);
+  if (!m) return null;
+  const s = clamp(opts.strictness ?? 1, 0.1, 10);
+  const wristTwist = clamp(Math.round(opts.wristTwist ?? 1), 1, 2);
+  const legs = clamp(Math.round(opts.legs ?? 1), 1, 2);
+
+  const armScores = (a: ArmMeasure) => ({
+    upperArm: rulaUpperArmScore(a.upperArm * s, a.upperArmExt),
+    lowerArm: rulaLowerArmScore(80 + (a.elbow - 80) * s),
+    wrist: rulaWristScore(a.wrist == null ? null : a.wrist * s),
+  });
+  const side = pickArmSide(m, a => {
+    const c = armScores(a);
+    return rulaTableA(c.upperArm, c.lowerArm, c.wrist, wristTwist);
+  });
+  if (!side) return null;
+  const arm = m.arms[side]!;
+
+  const components: RulaComponents = {
+    ...armScores(arm),
+    wristTwist,
+    neck: rulaNeckScore(m.neck * s, m.neckExt),
+    trunk: rulaTrunkScore(m.trunk * s),
+    legs,
+  };
+  const r = rulaFromComponents(components, opts);
+  return {
+    score: r.score,
+    risk: r.risk,
+    detail: {
+      components, tableA: r.tableA, tableB: r.tableB, scoreC: r.scoreC, scoreD: r.scoreD,
+      side, strictness: s, wristAssumed: arm.wrist == null,
+    },
+    angles: { neck: m.neck, trunk: m.trunk, upperArm: arm.upperArm, elbow: arm.elbow, wrist: arm.wrist },
   };
 }
 

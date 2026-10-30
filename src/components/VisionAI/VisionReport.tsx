@@ -69,7 +69,7 @@ const VisionReport: React.FC<Props> = ({ session, operatorName = 'Operario' }) =
       body: [
         ['Eficiencia Therbligs', `${effPct}%`],
         ['Bienestar promedio', `${avgEmotion}%`],
-        ['Score RULA promedio', avgRula],
+        ['Score RULA promedio (1–7)', avgRula],
         ['Score REBA promedio (1–15)', avgReba],
         ['Confianza ergonómica promedio', avgConf],
         ['EAR promedio (ojos)', avgEar],
@@ -88,7 +88,8 @@ const VisionReport: React.FC<Props> = ({ session, operatorName = 'Operario' }) =
     const ergoNote = doc.splitTextToSize(
       'Ergonomía estimada con una sola cámara (RULA y REBA): es un tamizaje, no una evaluación ergonómica normativa. ' +
       'Confírmala con un evaluador cuando la confianza sea baja. La vista lateral (perfil) da mediciones más fiables. ' +
-      'REBA asume carga, agarre y actividad = 0, lo que puede subestimar el riesgo.',
+      'RULA (McAtamney y Corlett, 1993) asume giro de muñeca en rango medio, piernas apoyadas, uso muscular y carga = 0; ' +
+      'REBA (Hignett y McAtamney, 2000) asume carga, agarre y actividad = 0. Ambos supuestos pueden subestimar el riesgo.',
       pw - 28,
     );
     doc.text(ergoNote, 14, y);

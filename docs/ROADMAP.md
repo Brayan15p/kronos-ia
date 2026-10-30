@@ -32,13 +32,17 @@ latinoamericana de manufactura manual.
   Supabase (ver README).
 - Corrección: las fuentes de la marca (Space Grotesk, JetBrains Mono, Inter) no cargaban en producción.
 - CI completo en GitHub: lint, tipos, tests, build y permisos de la base de datos.
+- **Ergonomía con confianza:** confianza por segmento, guía para grabar de perfil y REBA.
+- **Corrección del RULA:** el cálculo anterior medía el brazo contra la línea de hombros y la muñeca
+  contra la horizontal de la imagen, así que una postura neutral daba "riesgo alto" (5). Ahora sigue
+  a McAtamney & Corlett (1993), con sus tablas A, B y C: la postura neutral da 1–2 (aceptable).
 
 ## Ahora (0–2 meses): de demo a producto que se puede cobrar
 
 | # | Qué | Por qué | Esfuerzo |
 |---|---|---|---|
 | 2 | **Validar los ciclos automáticos con un video real** y medir el error frente al cronómetro; v2 con ejemplo marcado + DTW para procesos sin posición inicial clara | Es la promesa central; hay que poder decir "error < 3 %" con datos | M |
-| 3 | **Ergonomía con confianza**: semáforo de confianza por articulación, guía para grabar de lado, corrección manual del experto; añadir REBA | La ergonomía por una sola cámara sirve como tamizaje; mostrarlo honestamente la hace defendible ante un ergónomo o una ARL | S–M |
+| 3b | **Corrección manual del experto** sobre los ángulos de RULA/REBA y validación contra un ergónomo en 10 puestos reales | Cierra la brecha de confianza que hoy solo se muestra | S |
 | 4 | **Paquete SG-SST Colombia**: PVE osteomuscular, fila de matriz GTC 45, lux/ruido y plan de acción en PDF/Excel | Habla el idioma del responsable SST y de la ARL | M |
 
 ## Siguiente (2–6 meses): más valor por planta

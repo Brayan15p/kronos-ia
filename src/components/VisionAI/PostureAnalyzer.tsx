@@ -12,14 +12,15 @@ interface Props {
   eyes: EyeState | null;
 }
 
+// Niveles de acción RULA (McAtamney y Corlett, 1993): 1–2 · 3–4 · 5–6 · 7.
 const RULA_CONFIG: Record<number, { label: string; color: string; action: string }> = {
-  1: { label: 'Óptimo',         color: '#22d3ee', action: 'Sin acción requerida' },
-  2: { label: 'Aceptable',      color: '#34d399', action: 'Sin acción requerida' },
-  3: { label: 'Investigar',     color: '#a3e635', action: 'Investigar pronto' },
-  4: { label: 'Investigar',     color: '#fbbf24', action: 'Investigar y cambiar' },
-  5: { label: 'Cambiar',        color: '#fb923c', action: 'Cambiar pronto' },
-  6: { label: 'Cambiar pronto', color: '#f97316', action: 'Cambiar pronto' },
-  7: { label: 'Cambiar ya',     color: '#f43f5e', action: 'Acción inmediata' },
+  1: { label: 'Aceptable',      color: '#22d3ee', action: 'Aceptable si no se mantiene ni se repite mucho tiempo' },
+  2: { label: 'Aceptable',      color: '#34d399', action: 'Aceptable si no se mantiene ni se repite mucho tiempo' },
+  3: { label: 'Investigar',     color: '#a3e635', action: 'Investigar; pueden requerirse cambios' },
+  4: { label: 'Investigar',     color: '#fbbf24', action: 'Investigar; pueden requerirse cambios' },
+  5: { label: 'Cambiar pronto', color: '#fb923c', action: 'Investigar y cambiar pronto' },
+  6: { label: 'Cambiar pronto', color: '#f97316', action: 'Investigar y cambiar pronto' },
+  7: { label: 'Cambiar ya',     color: '#f43f5e', action: 'Investigar y cambiar de inmediato' },
 };
 
 function ConfidenceDot({ segment, conf }: { segment: ErgoSegment; conf?: SegmentConfidence }) {
@@ -61,8 +62,15 @@ function AngleBar({ label, value, max, warn, segment, conf, colorFor }: {
   );
 }
 
+// Colores por bandas de RULA (cian = neutro, ámbar = moderado, rojo = exigente).
+const CYAN = '#22d3ee', AMBER = '#fbbf24', RED = '#f43f5e';
+const bands = (lo: number, hi: number) => (v: number) => (v <= lo ? CYAN : v <= hi ? AMBER : RED);
+const neckColor = bands(10, 20);     // 0–10° → 1; 10–20° → 2; > 20° → 3
+const trunkColor = bands(20, 60);    // ≤ 20° → 1–2; 20–60° → 3; > 60° → 4
+const armColor = bands(45, 90);      // ≤ 45° → 1–2; 45–90° → 3; > 90° → 4
+const wristColor = bands(15, 30);    // ≤ 15° → 1–2; > 15° → 3
 // Flexión de codo: 60–100° es la zona neutra en RULA/REBA.
-const elbowColor = (v: number) => (v >= 60 && v <= 100 ? '#22d3ee' : '#fbbf24');
+const elbowColor = (v: number) => (v >= 60 && v <= 100 ? CYAN : AMBER);
 
 const PostureAnalyzer: React.FC<Props> = ({ posture, head, eyes }) => {
   const rulaConfig = posture ? RULA_CONFIG[posture.rula] || RULA_CONFIG[7] : null;
@@ -71,6 +79,18 @@ const PostureAnalyzer: React.FC<Props> = ({ posture, head, eyes }) => {
   const rebaInfo = reba ? REBA_RISK_INFO[reba.risk] : null;
   const overallLevel = posture?.overallConfidence != null ? confidenceLevel(posture.overallConfidence) : null;
   const view = posture?.view?.view;
+  const rd = posture?.rulaDetail;
+  const rulaTitle = rd
+    ? [
+        `RULA (McAtamney y Corlett, 1993): ${posture!.rula}/7 · ${rulaConfig?.action.toLowerCase()}.`,
+        `Lado analizado: ${rd.side}. Ángulos relativos al cuerpo (brazo y cuello respecto al tronco, tronco respecto a la vertical).`,
+        `Puntuaciones: brazo ${rd.components.upperArm}, antebrazo ${rd.components.lowerArm}, muñeca ${rd.components.wrist}, cuello ${rd.components.neck}, tronco ${rd.components.trunk} · Tabla A ${rd.tableA}, Tabla B ${rd.tableB}.`,
+        'Supuestos: giro de muñeca en rango medio (1), piernas apoyadas (1), uso muscular 0 y carga 0; pueden subestimar el riesgo.',
+        'No se miden: hombro elevado, abducción, brazo apoyado, cruce de la línea media, desviación de muñeca, giro ni inclinación lateral de cuello y tronco.',
+        rd.wristAssumed ? 'Mano no visible: muñeca asumida neutra.' : '',
+        rd.strictness !== 1 ? `Rigor ${rd.strictness.toFixed(1)}× (1× = método publicado).` : '',
+      ].filter(Boolean).join(' ')
+    : '';
   const rebaTitle = reba
     ? [
         `REBA (Hignett y McAtamney, 2000): ${reba.score}/15 · riesgo ${rebaInfo?.label.toLowerCase()} · actuación: ${rebaInfo?.action.toLowerCase()}.`,
@@ -110,7 +130,7 @@ const PostureAnalyzer: React.FC<Props> = ({ posture, head, eyes }) => {
             </span>
           </div>
         </div>
-        <div>
+        <div title={rulaTitle || undefined} aria-label={rulaTitle || undefined} className={rulaTitle ? 'cursor-help' : undefined}>
           <p className="font-display font-bold text-sm" style={{ color: rulaConfig?.color || '#94a3b8' }}>
             RULA {rulaConfig?.label || '—'}
           </p>
@@ -162,11 +182,11 @@ const PostureAnalyzer: React.FC<Props> = ({ posture, head, eyes }) => {
       {/* Angle bars */}
       {posture && (
         <div className="space-y-2.5">
-          <AngleBar label="Cuello" value={posture.neckAngle} max={60} warn={20} segment="cuello" conf={conf?.cuello} />
-          <AngleBar label="Tronco" value={posture.trunkAngle} max={80} warn={20} segment="tronco" conf={conf?.tronco} />
-          <AngleBar label="Brazo superior" value={posture.upperArmAngle} max={90} warn={45} segment="brazo" conf={conf?.brazo} />
-          <AngleBar label="Antebrazo (flexión de codo)" value={Math.max(0, 180 - posture.forearmAngle)} max={150} warn={100} segment="antebrazo" conf={conf?.antebrazo} colorFor={elbowColor} />
-          <AngleBar label="Muñeca" value={posture.wristAngle} max={30} warn={15} segment="muneca" conf={conf?.muneca} />
+          <AngleBar label="Cuello (vs. tronco)" value={posture.neckAngle} max={60} warn={20} segment="cuello" conf={conf?.cuello} colorFor={neckColor} />
+          <AngleBar label="Tronco (vs. vertical)" value={posture.trunkAngle} max={90} warn={60} segment="tronco" conf={conf?.tronco} colorFor={trunkColor} />
+          <AngleBar label="Brazo (vs. tronco)" value={posture.upperArmAngle} max={180} warn={90} segment="brazo" conf={conf?.brazo} colorFor={armColor} />
+          <AngleBar label="Antebrazo (flexión de codo)" value={posture.forearmAngle} max={150} warn={100} segment="antebrazo" conf={conf?.antebrazo} colorFor={elbowColor} />
+          <AngleBar label={rd?.wristAssumed ? 'Muñeca (mano no visible)' : 'Muñeca (vs. antebrazo)'} value={posture.wristAngle} max={60} warn={15} segment="muneca" conf={conf?.muneca} colorFor={wristColor} />
         </div>
       )}
 

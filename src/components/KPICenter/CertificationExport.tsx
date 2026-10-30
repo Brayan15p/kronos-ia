@@ -68,7 +68,8 @@ const CertificationExport: React.FC<Props> = ({
         head: [['Indicador', 'Valor', 'Objetivo', 'Estado']],
         body: [
           ['OEE', `${oee}%`, '≥85%', oee >= 85 ? '✅ Cumple' : '⚠️ Mejorar'],
-          ['Score RULA promedio', rulaAvg.toFixed(1), '≤3', rulaAvg <= 3 ? '✅ Cumple' : '⚠️ Revisar'],
+          // RULA es un tamizaje: un valor bajo indica postura aceptable, no cumplimiento normativo.
+          ['Score RULA promedio (1–7)', rulaAvg.toFixed(1), '≤2 aceptable', rulaAvg <= 2 ? '✅ Aceptable (tamizaje)' : rulaAvg <= 4 ? '⚠️ Investigar' : '⚠️ Cambiar pronto'],
           ['Eficiencia Therbligs', `${efficiency}%`, '≥70%', efficiency >= 70 ? '✅ Cumple' : '⚠️ Mejorar'],
           ['Días sin accidente', daysWithoutAccident.toString(), '≥30', daysWithoutAccident >= 30 ? '✅ Cumple' : '⚠️ Mejorar'],
           ['Cumplimiento ambiental', `${complianceRate.toFixed(0)}%`, '≥95%', complianceRate >= 95 ? '✅ Cumple' : '⚠️ Revisar'],
