@@ -4,7 +4,7 @@ import {
   Timer, ClipboardCheck, AlertTriangle, BarChart3, FileDown,
   Trash2, DollarSign, Dice5, Brain, TrendingUp, Plus, X,
   Zap, ChevronLeft, ChevronRight, Settings2, PenLine,
-  Eye, Shield, Activity, ScanEye, Loader2, Download, Upload, Cloud, ClipboardList, Workflow, GraduationCap, FlaskConical,
+  Eye, Shield, Activity, ScanEye, Loader2, Download, Upload, Cloud, ClipboardList, Workflow, GraduationCap, FlaskConical, BookOpenCheck, Compass,
 } from "lucide-react";
 import { toast } from "sonner";
 import { parseStudy, serializeStudy, StudyBackupError } from "@/lib/studyBackup";
@@ -35,9 +35,11 @@ const KPICenterDashboard = lazy(() => import("@/components/KPICenter/KPICenterDa
 const CloudWorkspace = lazy(() => import("@/components/Cloud/CloudWorkspace"));
 const LineBalancing = lazy(() => import("@/components/LineBalance/LineBalancing"));
 const DigitalTwin = lazy(() => import("@/components/Twin/DigitalTwin"));
+const StandardWork = lazy(() => import("@/components/SOP/StandardWork"));
+const PlantCopilot = lazy(() => import("@/components/Copilot/PlantCopilot"));
 const SkillsMatrix = lazy(() => import("@/components/Skills/SkillsMatrix"));
 
-type TabId = "timer" | "manual" | "steps" | "cost" | "montecarlo" | "dashboard" | "fatigue" | "quality" | "defects" | "optimizer" | "incentives" | "report" | "environment" | "workspace3d" | "sst-dashboard" | "ergo-cost" | "sst-ai" | "sgsst" | "vision-ai" | "kpi-center" | "cloud" | "line-balance" | "skills" | "twin";
+type TabId = "timer" | "manual" | "steps" | "cost" | "montecarlo" | "dashboard" | "fatigue" | "quality" | "defects" | "optimizer" | "incentives" | "report" | "environment" | "workspace3d" | "sst-dashboard" | "ergo-cost" | "sst-ai" | "sgsst" | "vision-ai" | "kpi-center" | "cloud" | "line-balance" | "skills" | "twin" | "sop" | "copilot";
 
 // Navegación por tarea: medir → analizar → mejorar → reportar, con SST como vertical propia.
 const TABS: { id: TabId; label: string; icon: React.ElementType; category: string }[] = [
@@ -52,9 +54,11 @@ const TABS: { id: TabId; label: string; icon: React.ElementType; category: strin
   { id: "cost", label: "Fuga de Dinero", icon: DollarSign, category: "Analizar" },
   { id: "fatigue", label: "Fatiga & Training", icon: Brain, category: "Analizar" },
   { id: "skills", label: "Competencias", icon: GraduationCap, category: "Analizar" },
+  { id: "copilot", label: "Copiloto de planta", icon: Compass, category: "Mejorar" },
   { id: "optimizer", label: "AI Optimizer", icon: Zap, category: "Mejorar" },
   { id: "line-balance", label: "Balanceo de línea", icon: Workflow, category: "Mejorar" },
   { id: "twin", label: "Gemelo digital", icon: FlaskConical, category: "Mejorar" },
+  { id: "sop", label: "Trabajo estándar", icon: BookOpenCheck, category: "Mejorar" },
   { id: "incentives", label: "Incentivos", icon: TrendingUp, category: "Mejorar" },
   { id: "sst-dashboard", label: "Centro de Mando", icon: Shield, category: "Ergonomía y SST" },
   { id: "environment", label: "Radar Ambiental", icon: Activity, category: "Ergonomía y SST" },
@@ -320,6 +324,8 @@ const AppContent: React.FC = () => {
             {activeTab === "cloud" && <CloudWorkspace />}
             {activeTab === "line-balance" && <LineBalancing />}
             {activeTab === "twin" && <DigitalTwin />}
+            {activeTab === "sop" && <StandardWork />}
+            {activeTab === "copilot" && <PlantCopilot />}
             {activeTab === "skills" && <SkillsMatrix />}
             </Suspense>
           </div>

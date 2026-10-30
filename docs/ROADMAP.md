@@ -47,6 +47,15 @@ latinoamericana de manufactura manual.
 - **Gemelo digital "¿y si…?":** copia virtual de la línea con los tiempos medidos. Palancas por paso,
   variabilidad, demanda, turnos, estaciones y costos; compara producción, capacidad, riesgo de superar
   el takt, mano de obra por unidad y margen frente a la línea actual (Monte Carlo reproducible).
+- **Copiloto de planta ("¿qué hago el lunes?"):** cruza tiempos, balanceo, calidad, competencias,
+  Monte Carlo y SG-SST, y entrega oportunidades priorizadas: primero la seguridad (GTC 45 nivel I–II
+  sin acción, dosis de ruido > 100 %, posturas críticas), luego el ahorro en pesos ÷ esfuerzo, sin
+  contar dos veces el mismo ahorro. Cada cifra muestra cómo se calculó y su confianza; la explicación
+  con IA es opcional y solo recibe la lista ya calculada y anonimizada.
+- **Trabajo estándar (SOP) automático:** hoja del puesto con tiempo observado (mediana), valoración
+  del ritmo, suplementos de la tabla de la OIT y tiempo estándar por paso; observaciones necesarias
+  (±5 %, 95 %), puntos clave sugeridos de calidad (defectos e inspección), seguridad (RULA/REBA y
+  GTC 45) y quién puede enseñar (ILUO), con PDF para firmar.
 - **PDFs sin caracteres rotos:** flechas y símbolos que Helvetica no dibuja se reemplazan en todos los PDFs.
 - **Corrección del RULA:** el cálculo anterior medía el brazo contra la línea de hombros y la muñeca
   contra la horizontal de la imagen, así que una postura neutral daba "riesgo alto" (5). Ahora sigue
@@ -62,7 +71,7 @@ latinoamericana de manufactura manual.
 
 ## Siguiente (2–6 meses): más valor por planta
 
-5. **Trabajo estándar (SOP) automático**: pasos con fotograma clave, tiempo estándar y puntos de calidad.
+5. **Fotograma clave por paso en el trabajo estándar**, tomado del video de Vision AI.
 8. **Detección de pasos omitidos o fuera de orden** (pasar de medir tiempo a prevenir defectos).
 9. **IA en el navegador (WebLLM)** con base de conocimiento lean/SST; OpenRouter como respaldo.
 
