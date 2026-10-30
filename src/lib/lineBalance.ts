@@ -19,6 +19,20 @@ export interface DemandConfig {
   breakMinutesPerShift: number; // pausas, almuerzo y pausas activas, no productivas
 }
 
+/** Clave de localStorage donde el balanceo guarda la demanda y los turnos (la usa también el gemelo digital). */
+export const LINE_BALANCE_CONFIG_KEY = "kronos_line_balance_v1";
+
+/** Lee la demanda y los turnos guardados; si no hay nada, usa la meta mensual del estudio de costos. */
+export function loadDemandConfig(fallbackUnits: number): DemandConfig {
+  const base: DemandConfig = { unitsPerMonth: fallbackUnits, daysPerMonth: 24, shiftsPerDay: 1, hoursPerShift: 8, breakMinutesPerShift: 30 };
+  try {
+    const raw = localStorage.getItem(LINE_BALANCE_CONFIG_KEY);
+    return raw ? { ...base, ...(JSON.parse(raw) as Partial<DemandConfig>) } : base;
+  } catch {
+    return base; // almacenamiento no disponible
+  }
+}
+
 export interface Station {
   index: number;
   tasks: TaskTime[];
