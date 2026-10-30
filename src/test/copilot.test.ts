@@ -537,3 +537,31 @@ describe("payload de la narración por IA", () => {
     expect(resolveOperatorNames(`${opToken(3)} y ${opToken(4)}`, (id) => `#${id}`)).toBe("#3 y #4");
   });
 });
+
+describe("secuencia del método", () => {
+  it("saltarse un paso que va con defectos entra como oportunidad de calidad, con impacto a mano", () => {
+    const normal = Array.from({ length: 10 }, (_, i) => ({ ...cyc(1, [10, 10, 10]), qualityPass: i !== 0 }));
+    const skipped = Array.from({ length: 5 }, () => {
+      const c = cyc(1, [10, 10]);
+      return {
+        ...c,
+        steps: [{ ...c.steps[0], stepNumber: 1 }, { ...c.steps[1], stepNumber: 3 }],
+        omittedSteps: [2], sequenceMode: "observada" as const, qualityPass: false,
+      };
+    });
+    const r = analyzePlant(snap({ steps: STEPS3, operators: [op(1)], cycles: [...normal, ...skipped] }));
+    const o = byId(r, "secuencia-metodo:2")!;
+    expect(o).toBeDefined();
+    expect(o.area).toBe("calidad");
+    // (100 % − 10 %) × 5/15 × 1000 u × 5000 COP = 1.500.000
+    expect(o.impact.monthlyCOP).toBeCloseTo(0.9 * (5 / 15) * 1000 * 5000, 4);
+    expect(o.impact.overlapGroup).toBe("calidad");
+    expect(o.evidence[0].tab).toBe("sequence");
+  });
+
+  it("sin asociación significativa no hay oportunidad", () => {
+    const cycles = Array.from({ length: 6 }, () => cyc(1, [10, 10, 10]));
+    const r = analyzePlant(snap({ steps: STEPS3, operators: [op(1)], cycles }));
+    expect(byDetector(r, "secuencia-metodo")).toEqual([]);
+  });
+});
