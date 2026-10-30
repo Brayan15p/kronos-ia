@@ -3,6 +3,7 @@ import React from 'react';
 import { FileDown, FileSpreadsheet } from 'lucide-react';
 import { VisionSession, EmotionState } from './types';
 import { THERBLIG_INFO, EMOTION_INFO, downloadCSV } from './utils';
+import { confidenceLevel } from './ergonomics';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { lastTableY } from '@/lib/pdf';
@@ -33,6 +34,12 @@ const VisionReport: React.FC<Props> = ({ session, operatorName = 'Operario' }) =
   const avgRula = session.snapshots.length
     ? (session.snapshots.reduce((s, e) => s + e.rula, 0) / session.snapshots.length).toFixed(1)
     : '—';
+  // REBA y confianza solo existen en muestras recientes: se promedian las que los tienen.
+  const rebaVals = session.snapshots.map(s => s.reba).filter((v): v is number => typeof v === 'number');
+  const avgReba = rebaVals.length ? (rebaVals.reduce((a, b) => a + b, 0) / rebaVals.length).toFixed(1) : '—';
+  const confVals = session.snapshots.map(s => s.ergoConfidence).filter((v): v is number => typeof v === 'number');
+  const avgConfNum = confVals.length ? confVals.reduce((a, b) => a + b, 0) / confVals.length : null;
+  const avgConf = avgConfNum == null ? '—' : `${Math.round(avgConfNum * 100)}% (${confidenceLevel(avgConfNum)})`;
   const avgEar = session.snapshots.length
     ? (session.snapshots.reduce((s, e) => s + e.ear, 0) / session.snapshots.length).toFixed(2)
     : '—';
@@ -62,7 +69,9 @@ const VisionReport: React.FC<Props> = ({ session, operatorName = 'Operario' }) =
       body: [
         ['Eficiencia Therbligs', `${effPct}%`],
         ['Bienestar promedio', `${avgEmotion}%`],
-        ['Score RULA promedio', avgRula],
+        ['Score RULA promedio (1–7)', avgRula],
+        ['Score REBA promedio (1–15)', avgReba],
+        ['Confianza ergonómica promedio', avgConf],
         ['EAR promedio (ojos)', avgEar],
         ['Total eventos Therblig', session.therbligs.length.toString()],
         ['Duración sesión', fmtTime(durationMs)],
@@ -71,7 +80,20 @@ const VisionReport: React.FC<Props> = ({ session, operatorName = 'Operario' }) =
       headStyles: { fillColor: [0, 180, 210] },
       styles: { fontSize: 9 },
     });
-    y = lastTableY(doc) + 10;
+    y = lastTableY(doc) + 5;
+
+    // Aviso de alcance de la ergonomía por cámara
+    doc.setFontSize(7.5);
+    doc.setTextColor(120, 130, 140);
+    const ergoNote = doc.splitTextToSize(
+      'Ergonomía estimada con una sola cámara (RULA y REBA): es un tamizaje, no una evaluación ergonómica normativa. ' +
+      'Confírmala con un evaluador cuando la confianza sea baja. La vista lateral (perfil) da mediciones más fiables. ' +
+      'RULA (McAtamney y Corlett, 1993) asume giro de muñeca en rango medio, piernas apoyadas, uso muscular y carga = 0; ' +
+      'REBA (Hignett y McAtamney, 2000) asume carga, agarre y actividad = 0. Ambos supuestos pueden subestimar el riesgo.',
+      pw - 28,
+    );
+    doc.text(ergoNote, 14, y);
+    y += ergoNote.length * 3.5 + 6;
 
     // Therbligs table
     const byType: Record<string, number> = {};
@@ -112,12 +134,14 @@ const VisionReport: React.FC<Props> = ({ session, operatorName = 'Operario' }) =
       const samples = session.snapshots.filter((_, i) => i % sampleStep === 0);
       autoTable(doc, {
         startY: y,
-        head: [['Tiempo', 'Emoción', 'Bienestar', 'RULA', 'EAR', 'Therblig']],
+        head: [['Tiempo', 'Emoción', 'Bienestar', 'RULA', 'REBA', 'Confianza', 'EAR', 'Therblig']],
         body: samples.map(s => [
           fmtTime(s.timestamp - session.startTime),
           EMOTION_INFO[s.emotion]?.label || s.emotion,
           `${s.emotionScore}%`,
           s.rula.toString(),
+          s.reba != null ? s.reba.toString() : '—',
+          s.ergoConfidence != null ? `${Math.round(s.ergoConfidence * 100)}%` : '—',
           s.ear.toFixed(2),
           s.therblig || '—',
         ]),
@@ -136,12 +160,14 @@ const VisionReport: React.FC<Props> = ({ session, operatorName = 'Operario' }) =
   const exportCSV = () => {
     downloadCSV(
       `kronos_vision_${new Date().toISOString().slice(0, 10)}.csv`,
-      ['Tiempo', 'Emocion', 'Bienestar', 'RULA', 'EAR', 'Therblig', 'Timestamp'],
+      ['Tiempo', 'Emocion', 'Bienestar', 'RULA', 'REBA', 'Confianza ergonomica', 'EAR', 'Therblig', 'Timestamp'],
       session.snapshots.map(s => [
         fmtTime(s.timestamp - session.startTime),
         EMOTION_INFO[s.emotion]?.label || s.emotion,
         s.emotionScore,
         s.rula,
+        s.reba ?? '',
+        s.ergoConfidence != null ? s.ergoConfidence.toFixed(2) : '',
         s.ear.toFixed(3),
         s.therblig || '',
         fmtDate(s.timestamp),
@@ -162,6 +188,8 @@ const VisionReport: React.FC<Props> = ({ session, operatorName = 'Operario' }) =
               { label: 'Eficiencia', value: `${effPct}%`, color: effPct >= 70 ? '#34d399' : effPct >= 40 ? '#fbbf24' : '#f43f5e' },
               { label: 'Bienestar', value: `${avgEmotion}%`, color: '#818cf8' },
               { label: 'RULA prom.', value: avgRula, color: '#22d3ee' },
+              { label: 'REBA prom.', value: avgReba, color: '#22d3ee' },
+              { label: 'Confianza ergo.', value: avgConfNum == null ? '—' : `${Math.round(avgConfNum * 100)}%`, color: '#94a3b8' },
               { label: 'Duración', value: fmtTime(durationMs), color: '#94a3b8' },
             ].map(({ label, value, color }) => (
               <div key={label} className="p-2 rounded-lg bg-white/[0.04] border border-white/[0.06]">

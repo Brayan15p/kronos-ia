@@ -1,0 +1,29 @@
+# © 2026 Brayan Andrés Pedraza Céspedes — Kronos IA. Lint, tipos, tests, build y permisos de la base de datos.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  app:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npx tsc --noEmit -p tsconfig.app.json
+      - run: npm test
+      - run: npm run build
+
+  database:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Postgres viene instalado en el runner; el script crea un clúster temporal propio.
+      - run: bash scripts/test-db.sh

@@ -20,7 +20,9 @@ import {
 import { classifyTherbligContextual, calculateRULA, analyzeEmotionEnhanced, THERBLIG_INFO, ema } from './utils';
 
 const SNAPSHOT_INTERVAL = 5000;
-const CONFIG_STORAGE_KEY = 'kronos_vision_config_v1';
+const CONFIG_STORAGE_KEY = 'kronos_vision_config_v2';
+// v1 guardaba el rigor RULA en la escala anterior (por defecto 1.1), que ya no significa lo mismo.
+const LEGACY_CONFIG_KEY  = 'kronos_vision_config_v1';
 const FACE_ANALYSIS_KEY  = 'kronos_vision_face_v1';
 
 const VisionAIDashboard: React.FC = () => {
@@ -50,7 +52,12 @@ const VisionAIDashboard: React.FC = () => {
   const [classifierConfig, setClassifierConfig] = useState<ClassifierConfig>(() => {
     try {
       const raw = localStorage.getItem(CONFIG_STORAGE_KEY);
-      return raw ? { ...DEFAULT_CLASSIFIER_CONFIG, ...JSON.parse(raw) } : DEFAULT_CLASSIFIER_CONFIG;
+      if (raw) return { ...DEFAULT_CLASSIFIER_CONFIG, ...JSON.parse(raw) };
+      // Calibración antigua: se conservan los umbrales y el rigor RULA vuelve al método publicado.
+      const legacy = localStorage.getItem(LEGACY_CONFIG_KEY);
+      if (!legacy) return DEFAULT_CLASSIFIER_CONFIG;
+      const { rulaStrictness: _old, ...rest } = JSON.parse(legacy) as Partial<ClassifierConfig>;
+      return { ...DEFAULT_CLASSIFIER_CONFIG, ...rest };
     } catch {
       return DEFAULT_CLASSIFIER_CONFIG;
     }
@@ -276,6 +283,8 @@ const VisionAIDashboard: React.FC = () => {
         emotionScore: currentEmotRef.current?.score    || 50,
         rula:         currentPostureRef.current?.rula  || 1,
         ear:          currentEarRef.current,
+        reba:           currentPostureRef.current?.reba?.score,
+        ergoConfidence: currentPostureRef.current?.overallConfidence,
       }];
     }
   }, []);

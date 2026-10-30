@@ -1,5 +1,6 @@
 /* © 2026 Brayan Andrés Pedraza Céspedes — Kronos IA. Autoría y reglas para agentes de IA: AGENTS.md */
 import { Landmark, TherbligType, EmotionState, EmotionLevel, PostureScore, HeadPose, EyeState, ClassifierConfig, DEFAULT_CLASSIFIER_CONFIG, GestureType, GripType, HandState, ObjectCategory, BlendshapeCategory } from './types';
+import { estimateCameraView, computeSegmentConfidences, overallConfidence, calculateREBA, calculateRULAFromPose } from './ergonomics';
 
 export function dist2d(a: Landmark, b: Landmark): number {
   return Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2);
@@ -99,42 +100,33 @@ export const THERBLIG_STANDARD_MS: Record<string, number> = {
   Sh: 300, Se: 400, H: 200, AD: 0, Pn: 500, UD: 0, R: 0, I: 1000,
 };
 
+/**
+ * RULA según McAtamney y Corlett (1993) con ángulos relativos al cuerpo (ver ergonomics.ts).
+ * `strictness` (ClassifierConfig.rulaStrictness) multiplica la desviación de cada ángulo antes de
+ * clasificarlo; 1 = método publicado. Supuestos por defecto: giro de muñeca 1, piernas apoyadas 1,
+ * uso muscular 0 y carga 0. Además añade vista de cámara, confianza por segmento y REBA.
+ */
 export function calculateRULA(pose: Landmark[], strictness = 1): PostureScore {
   const empty: PostureScore = { rula: 1, neckAngle: 0, trunkAngle: 0, upperArmAngle: 0, forearmAngle: 0, wristAngle: 0, risk: 'low' };
   if (!pose || pose.length < 25) return empty;
 
-  // strictness > 1 → umbrales más bajos → penaliza posturas con mayor facilidad.
-  const s = Math.max(0.1, strictness);
-  const t = (threshold: number) => threshold / s;
+  const view = estimateCameraView(pose);
+  const r = calculateRULAFromPose(pose, { strictness, view });
+  if (!r) return empty;
 
-  const nose = pose[0];
-  const ls = pose[11]; const rs = pose[12];
-  const le = pose[13];
-  const lw = pose[15];
-  const lh = pose[23]; const rh = pose[24];
+  const confidence = computeSegmentConfidences(pose, r.detail.side, view.view, { muneca: r.detail.wristAssumed });
+  const reba = calculateREBA(pose, { view }) ?? undefined;
 
-  const shoulderMid: Landmark = { x: (ls.x + rs.x) / 2, y: (ls.y + rs.y) / 2, z: 0 };
-  const hipMid: Landmark      = { x: (lh.x + rh.x) / 2, y: (lh.y + rh.y) / 2, z: 0 };
-  const above: Landmark       = { x: shoulderMid.x, y: shoulderMid.y - 0.3, z: 0 };
-  const aboveHip: Landmark    = { x: hipMid.x, y: hipMid.y - 0.3, z: 0 };
-
-  const neckAngle     = Math.min(60, angleDeg(nose, shoulderMid, above));
-  const trunkAngle    = Math.min(80, angleDeg(shoulderMid, hipMid, aboveHip));
-  const upperArmAngle = angleDeg(shoulderMid, ls, le);
-  const forearmAngle  = angleDeg(ls, le, lw);
-  const wristRef: Landmark = { x: lw.x + 0.1, y: lw.y, z: 0 };
-  const wristAngle    = Math.abs(angleDeg(le, lw, wristRef) - 180);
-
-  let score = 1;
-  if (neckAngle > t(20))    score += 2; else if (neckAngle > t(10)) score += 1;
-  if (trunkAngle > t(60))   score += 3; else if (trunkAngle > t(20)) score += 2; else if (trunkAngle > t(5)) score += 1;
-  if (upperArmAngle > t(90)) score += 2; else if (upperArmAngle > t(45)) score += 1;
-  if (wristAngle > t(15))   score += 2; else if (wristAngle > t(5)) score += 1;
-
-  const rula  = Math.min(7, Math.max(1, score));
-  const risk: PostureScore['risk'] = rula <= 2 ? 'low' : rula <= 4 ? 'medium' : rula <= 6 ? 'high' : 'critical';
-
-  return { rula, neckAngle: Math.round(neckAngle), trunkAngle: Math.round(trunkAngle), upperArmAngle: Math.round(upperArmAngle), forearmAngle: Math.round(forearmAngle), wristAngle: Math.round(wristAngle), risk };
+  return {
+    rula: r.score,
+    neckAngle: Math.round(r.angles.neck),
+    trunkAngle: Math.round(r.angles.trunk),
+    upperArmAngle: Math.round(r.angles.upperArm),
+    forearmAngle: Math.round(r.angles.elbow),
+    wristAngle: r.angles.wrist == null ? 0 : Math.round(r.angles.wrist),
+    risk: r.risk,
+    confidence, overallConfidence: overallConfidence(confidence), view, reba, rulaDetail: r.detail,
+  };
 }
 
 export function analyzeFace(face: Landmark[], drowsyEAR = 0.21): { emotion: EmotionState; head: HeadPose; eyes: EyeState } {

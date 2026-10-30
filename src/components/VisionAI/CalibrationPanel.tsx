@@ -58,7 +58,7 @@ const SLIDERS: SliderDef[] = [
   {
     key: 'rulaStrictness',
     label: 'Rigor RULA',
-    help: 'Severidad de la evaluación postural. Más alto = penaliza posturas con mayor facilidad.',
+    help: 'Multiplica la desviación de cada ángulo antes de clasificarlo en RULA. 1.0× = método publicado (McAtamney y Corlett, 1993); más alto = más severo, más bajo = más tolerante.',
     min: 0.5, max: 2, step: 0.1,
     format: v => `${v.toFixed(1)}×`,
   },
