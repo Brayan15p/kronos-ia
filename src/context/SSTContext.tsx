@@ -94,9 +94,14 @@ export const calculateLEQ = (readings: { db: number; exposureHours: number }[]):
   return 10 * Math.log10(sum / totalHours);
 };
 
+/**
+ * Dosis diaria de ruido (%). Res. 1792/1990: 85 dB para 8 h y la mitad del tiempo por cada
+ * 5 dB más (90 dB → 4 h, 95 dB → 2 h…), coherente con REGULATIONS. Antes usaba 3 dB (criterio
+ * NIOSH), que no corresponde a la norma colombiana citada.
+ */
 export const calculateDailyDose = (leq: number, hours: number): number => {
   if (leq <= 0 || hours <= 0) return 0;
-  const allowedHours = 8 / Math.pow(2, (leq - 85) / 3);
+  const allowedHours = 8 / Math.pow(2, (leq - 85) / 5);
   return (hours / allowedHours) * 100;
 };
 

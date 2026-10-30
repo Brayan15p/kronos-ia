@@ -176,6 +176,8 @@ export interface SessionSnapshot {
   reba?: number;
   /** Confianza ergonómica global 0–1 en el momento de la muestra. */
   ergoConfidence?: number;
+  /** Vista de cámara estimada en el momento de la muestra (para la «vista predominante» en SG-SST). */
+  view?: CameraView;
 }
 
 export interface VisionSession {
