@@ -44,6 +44,9 @@ latinoamericana de manufactura manual.
 - **Curva de aprendizaje y matriz de competencias ILUO**, con alertas de dependencia de una sola persona.
 - **Revisión del experto en ergonomía:** corrige ángulos y factores de RULA/REBA, queda en el paquete
   SG-SST (la matriz usa el valor del experto) y guarda los pares cámara vs experto para validar.
+- **Gemelo digital "¿y si…?":** copia virtual de la línea con los tiempos medidos. Palancas por paso,
+  variabilidad, demanda, turnos, estaciones y costos; compara producción, capacidad, riesgo de superar
+  el takt, mano de obra por unidad y margen frente a la línea actual (Monte Carlo reproducible).
 - **PDFs sin caracteres rotos:** flechas y símbolos que Helvetica no dibuja se reemplazan en todos los PDFs.
 - **Corrección del RULA:** el cálculo anterior medía el brazo contra la línea de hombros y la muñeca
   contra la horizontal de la imagen, así que una postura neutral daba "riesgo alto" (5). Ahora sigue

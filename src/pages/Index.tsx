@@ -4,7 +4,7 @@ import {
   Timer, ClipboardCheck, AlertTriangle, BarChart3, FileDown,
   Trash2, DollarSign, Dice5, Brain, TrendingUp, Plus, X,
   Zap, ChevronLeft, ChevronRight, Settings2, PenLine,
-  Eye, Shield, Activity, ScanEye, Loader2, Download, Upload, Cloud, ClipboardList, Workflow, GraduationCap,
+  Eye, Shield, Activity, ScanEye, Loader2, Download, Upload, Cloud, ClipboardList, Workflow, GraduationCap, FlaskConical,
 } from "lucide-react";
 import { toast } from "sonner";
 import { parseStudy, serializeStudy, StudyBackupError } from "@/lib/studyBackup";
@@ -34,9 +34,10 @@ const VisionAIDashboard = lazy(() => import("@/components/VisionAI/VisionAIDashb
 const KPICenterDashboard = lazy(() => import("@/components/KPICenter/KPICenterDashboard"));
 const CloudWorkspace = lazy(() => import("@/components/Cloud/CloudWorkspace"));
 const LineBalancing = lazy(() => import("@/components/LineBalance/LineBalancing"));
+const DigitalTwin = lazy(() => import("@/components/Twin/DigitalTwin"));
 const SkillsMatrix = lazy(() => import("@/components/Skills/SkillsMatrix"));
 
-type TabId = "timer" | "manual" | "steps" | "cost" | "montecarlo" | "dashboard" | "fatigue" | "quality" | "defects" | "optimizer" | "incentives" | "report" | "environment" | "workspace3d" | "sst-dashboard" | "ergo-cost" | "sst-ai" | "sgsst" | "vision-ai" | "kpi-center" | "cloud" | "line-balance" | "skills";
+type TabId = "timer" | "manual" | "steps" | "cost" | "montecarlo" | "dashboard" | "fatigue" | "quality" | "defects" | "optimizer" | "incentives" | "report" | "environment" | "workspace3d" | "sst-dashboard" | "ergo-cost" | "sst-ai" | "sgsst" | "vision-ai" | "kpi-center" | "cloud" | "line-balance" | "skills" | "twin";
 
 // Navegación por tarea: medir → analizar → mejorar → reportar, con SST como vertical propia.
 const TABS: { id: TabId; label: string; icon: React.ElementType; category: string }[] = [
@@ -53,6 +54,7 @@ const TABS: { id: TabId; label: string; icon: React.ElementType; category: strin
   { id: "skills", label: "Competencias", icon: GraduationCap, category: "Analizar" },
   { id: "optimizer", label: "AI Optimizer", icon: Zap, category: "Mejorar" },
   { id: "line-balance", label: "Balanceo de línea", icon: Workflow, category: "Mejorar" },
+  { id: "twin", label: "Gemelo digital", icon: FlaskConical, category: "Mejorar" },
   { id: "incentives", label: "Incentivos", icon: TrendingUp, category: "Mejorar" },
   { id: "sst-dashboard", label: "Centro de Mando", icon: Shield, category: "Ergonomía y SST" },
   { id: "environment", label: "Radar Ambiental", icon: Activity, category: "Ergonomía y SST" },
@@ -317,6 +319,7 @@ const AppContent: React.FC = () => {
             {activeTab === "report" && <div className="max-w-3xl mx-auto"><PDFReport /></div>}
             {activeTab === "cloud" && <CloudWorkspace />}
             {activeTab === "line-balance" && <LineBalancing />}
+            {activeTab === "twin" && <DigitalTwin />}
             {activeTab === "skills" && <SkillsMatrix />}
             </Suspense>
           </div>

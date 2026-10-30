@@ -4,7 +4,8 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import { Workflow, Minus, Plus, AlertTriangle, CheckCircle2, Info } from "lucide-react";
 import { useTimeStudy } from "@/context/TimeStudyContext";
 import {
-  balanceLine, lineMetrics, minStations, stationRisk, stationsToMeetTakt, taktTime, taskTimes, type DemandConfig,
+  balanceLine, LINE_BALANCE_CONFIG_KEY, lineMetrics, loadDemandConfig, minStations, stationRisk, stationsToMeetTakt, taktTime, taskTimes,
+  type DemandConfig,
 } from "@/lib/lineBalance";
 
 const CHART_COLORS = [
@@ -20,20 +21,8 @@ const tooltipStyle = {
     fontSize: "11px",
   },
 };
-const CONFIG_KEY = "kronos_line_balance_v1";
-
 const fmt = (s: number) => (Number.isFinite(s) ? `${s.toFixed(1)} s` : "—");
 const pct = (x: number) => `${(x * 100).toFixed(0)} %`;
-
-function loadConfig(fallbackUnits: number): DemandConfig {
-  const base: DemandConfig = { unitsPerMonth: fallbackUnits, daysPerMonth: 24, shiftsPerDay: 1, hoursPerShift: 8, breakMinutesPerShift: 30 };
-  try {
-    const raw = localStorage.getItem(CONFIG_KEY);
-    return raw ? { ...base, ...(JSON.parse(raw) as Partial<DemandConfig>) } : base;
-  } catch {
-    return base; // almacenamiento no disponible
-  }
-}
 
 const Field: React.FC<{ label: string; value: number; step?: number; onChange: (v: number) => void }> = ({ label, value, step = 1, onChange }) => (
   <label className="block">
@@ -46,7 +35,7 @@ const Field: React.FC<{ label: string; value: number; step?: number; onChange: (
 /** Balanceo de línea y yamazumi: cuántas estaciones hacen falta y cómo repartir los pasos. */
 const LineBalancing: React.FC = () => {
   const { steps, cycles, costConfig } = useTimeStudy();
-  const [config, setConfig] = useState<DemandConfig>(() => loadConfig(costConfig.monthlyProductionTarget));
+  const [config, setConfig] = useState<DemandConfig>(() => loadDemandConfig(costConfig.monthlyProductionTarget));
   const tasks = useMemo(() => taskTimes(steps, cycles), [steps, cycles]);
   const takt = taktTime(config);
   const minK = minStations(tasks, takt);
@@ -59,7 +48,7 @@ const LineBalancing: React.FC = () => {
 
   useEffect(() => {
     try {
-      localStorage.setItem(CONFIG_KEY, JSON.stringify(config));
+      localStorage.setItem(LINE_BALANCE_CONFIG_KEY, JSON.stringify(config));
     } catch {
       /* almacenamiento no disponible */
     }
