@@ -44,7 +44,8 @@ const FatigueDetection: React.FC = () => {
 
   // Training / Skill Gap: compare step averages between operators
   const skillGapData = CRANE_STEPS.map((step) => {
-    const entry: any = { step: `P${step.number}`, name: step.name };
+    // Una fila por paso: columnas fijas (step, name) + una columna por operario con su promedio
+    const entry: Record<string, string | number> = { step: `P${step.number}`, name: step.name };
     operators.forEach((op) => {
       const times = cycles
         .filter((c) => c.operatorId === op.id)
@@ -57,7 +58,8 @@ const FatigueDetection: React.FC = () => {
   });
 
   // Find skill gaps (biggest difference between operators per step)
-  const gaps = CRANE_STEPS.map((step) => {
+  type SkillGap = { step: string; stepNum: number; fastest: string; slowest: string; diff: number; emoji: string };
+  const gaps = CRANE_STEPS.map((step): SkillGap | null => {
     const opTimes = operators.map((op) => {
       const times = cycles
         .filter((c) => c.operatorId === op.id)
@@ -73,7 +75,7 @@ const FatigueDetection: React.FC = () => {
     const slowest = sorted[sorted.length - 1];
     const diff = slowest.avg - fastest.avg;
     return { step: step.name, stepNum: step.number, fastest: fastest.op, slowest: slowest.op, diff: Number(diff.toFixed(1)), emoji: step.emoji };
-  }).filter(Boolean).sort((a: any, b: any) => b.diff - a.diff);
+  }).filter((g): g is SkillGap => g !== null).sort((a, b) => b.diff - a.diff);
 
   // Std Dev per cycle for fatigue detection
   const stdDevPerCycle = cycles.map((c, i) => {
@@ -139,7 +141,7 @@ const FatigueDetection: React.FC = () => {
             Brecha de Habilidades (Skill Gap) — ¿Dónde capacitar?
           </h4>
           <div className="space-y-2">
-            {(gaps as any[]).slice(0, 5).map((g: any) => (
+            {gaps.slice(0, 5).map((g) => (
               <div key={g.stepNum} className="flex items-center gap-3 p-3 rounded-lg bg-muted/20 border border-border/20">
                 <span className="text-lg">{g.emoji}</span>
                 <div className="flex-1 min-w-0">

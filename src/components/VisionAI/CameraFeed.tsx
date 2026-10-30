@@ -6,11 +6,15 @@ import type {
   PoseLandmarker   as PLType,
   FaceLandmarker   as FLType,
   ObjectDetector   as ODType,
+  GestureRecognizerResult,
+  PoseLandmarkerResult,
+  FaceLandmarkerResult,
+  NormalizedLandmark,
 } from '@mediapipe/tasks-vision';
 import {
   VisionResults, VirtualObjectType, TherbligType, TherbligEvent,
   EmotionLevel, PostureScore, GestureType, HandState, BlendshapeCategory,
-  DetectedObject,
+  DetectedObject, Landmark,
 } from './types';
 import { THERBLIG_INFO, EMOTION_INFO, GESTURE_DISPLAY, classifyHandState } from './utils';
 
@@ -84,23 +88,13 @@ const OBJ_META: Record<string, { emoji: string; color: string; es: string }> = {
   'hot dog':       { emoji:'🌭',  color:'#f97316', es:'Salchicha'    },
   'kite':          { emoji:'🪁',  color:'#818cf8', es:'Cometa'       },
   'frisbee':       { emoji:'🥏',  color:'#f43f5e', es:'Frisbee'      },
-  'baseball bat':  { emoji:'🏏',  color:'#f59e0b', es:'Bate'         },
   'baseball glove':{ emoji:'🧤',  color:'#f97316', es:'Guante'       },
   'skateboard':    { emoji:'🛹',  color:'#818cf8', es:'Patineta'     },
   'surfboard':     { emoji:'🏄',  color:'#22d3ee', es:'Tabla'        },
   'tennis racket': { emoji:'🎾',  color:'#a3e635', es:'Raqueta'      },
-  'wine glass':    { emoji:'🍷',  color:'#f43f5e', es:'Copa'         },
-  'banana':        { emoji:'🍌',  color:'#fbbf24', es:'Banano'       },
-  'apple':         { emoji:'🍎',  color:'#f43f5e', es:'Manzana'      },
-  'orange':        { emoji:'🍊',  color:'#f97316', es:'Naranja'      },
-  'sandwich':      { emoji:'🥪',  color:'#fbbf24', es:'Sándwich'     },
-  'pizza':         { emoji:'🍕',  color:'#f43f5e', es:'Pizza'        },
-  'donut':         { emoji:'🍩',  color:'#f472b6', es:'Dona'         },
-  'cake':          { emoji:'🎂',  color:'#f472b6', es:'Torta'        },
   'bowl':          { emoji:'🥣',  color:'#fb7185', es:'Tazón'        },
   'tie':           { emoji:'👔',  color:'#60a5fa', es:'Corbata'      },
   'skis':          { emoji:'⛷️',  color:'#22d3ee', es:'Esquís'       },
-  'tv':            { emoji:'📺',  color:'#22d3ee', es:'Televisor'    },
   'toilet':        { emoji:'🚽',  color:'#94a3b8', es:'Inodoro'      },
 };
 function getObjMeta(cat: string) {
@@ -109,7 +103,7 @@ function getObjMeta(cat: string) {
 
 /** Find which detected object is closest to the hand palm center */
 function findObjectNearHand(
-  hand: any[], detections: DetectedObject[], vW: number, vH: number,
+  hand: Landmark[], detections: DetectedObject[], vW: number, vH: number,
 ): DetectedObject | null {
   if (!hand?.length || !detections.length) return null;
   const pts = [hand[0], hand[5], hand[9], hand[13], hand[17]].filter(Boolean);
@@ -142,7 +136,7 @@ function playBeep(freq = 660, dur = 0.28) {
     osc.frequency.value = freq; g.gain.value = 0.07;
     osc.start(); osc.stop(ac.currentTime + dur);
     setTimeout(() => ac.close(), 1200);
-  } catch {}
+  } catch { /* audio no disponible */ }
 }
 
 // ── Virtual object colors / drawing ──────────────────────────────────────────
@@ -172,7 +166,7 @@ function drawObject(ctx: CanvasRenderingContext2D, ox: number, oy: number, type:
   else if (type==='componente') { ctx.fillRect(-s*0.9,-s*0.5,s*1.8,s); ctx.strokeRect(-s*0.9,-s*0.5,s*1.8,s); for(let i=0;i<6;i++){ctx.beginPath();ctx.arc(-s*0.7+i*s*0.28,-s*0.5,4,0,Math.PI*2);ctx.fill();} ctx.strokeStyle=ha(color,0.5);ctx.lineWidth=1; for(let i=0;i<3;i++)ctx.strokeRect(-s*0.7+i*s*0.44,-s*0.25,s*0.36,s*0.5); }
   else if (type==='pantalla') { const sw=s*1.65;const sh=s; ctx.fillRect(-sw/2,-sh/2,sw,sh);ctx.strokeRect(-sw/2,-sh/2,sw,sh); ctx.strokeStyle=ha(color,0.45);ctx.strokeRect(-sw/2+5,-sh/2+5,sw-10,sh-10); ctx.fillStyle=ha(color,0.08);ctx.fillRect(-sw/2+8,-sh/2+8,sw-16,sh-16); }
   else if (type==='boton') { ctx.beginPath();ctx.ellipse(0,0,s*0.62,s*0.36,0,0,Math.PI*2);ctx.fill();ctx.stroke(); ctx.shadowBlur=22;ctx.beginPath();ctx.ellipse(0,-4,s*0.42,s*0.23,0,0,Math.PI*2);ctx.fill();ctx.stroke(); }
-  else if (type==='engranaje') { const teeth=10;const r1=s*0.52;const r2=s*0.72; ctx.beginPath(); for(let i=0;i<teeth*2;i++){const a=(i/(teeth*2))*Math.PI*2;const r=i%2===0?r2:r1; i===0?ctx.moveTo(Math.cos(a)*r,Math.sin(a)*r):ctx.lineTo(Math.cos(a)*r,Math.sin(a)*r);} ctx.closePath();ctx.fill();ctx.stroke(); ctx.beginPath();ctx.arc(0,0,s*0.2,0,Math.PI*2); ctx.fillStyle='#0a0a1a';ctx.fill();ctx.strokeStyle=color;ctx.stroke(); }
+  else if (type==='engranaje') { const teeth=10;const r1=s*0.52;const r2=s*0.72; ctx.beginPath(); for(let i=0;i<teeth*2;i++){const a=(i/(teeth*2))*Math.PI*2;const r=i%2===0?r2:r1; if(i===0) ctx.moveTo(Math.cos(a)*r,Math.sin(a)*r); else ctx.lineTo(Math.cos(a)*r,Math.sin(a)*r);} ctx.closePath();ctx.fill();ctx.stroke(); ctx.beginPath();ctx.arc(0,0,s*0.2,0,Math.PI*2); ctx.fillStyle='#0a0a1a';ctx.fill();ctx.strokeStyle=color;ctx.stroke(); }
   else if (type==='palanca') { ctx.fillRect(-8,-s*0.12,s*1.4,18);ctx.strokeRect(-8,-s*0.12,s*1.4,18); ctx.fillRect(-8,-s,16,s*0.92);ctx.strokeRect(-8,-s,16,s*0.92); ctx.beginPath();ctx.arc(0,-s,19,0,Math.PI*2);ctx.fill();ctx.stroke(); }
   else if (type==='pcb') { const pw=s*1.6;const ph=s*1.1; ctx.fillStyle='#0d4f3c';ctx.fillRect(-pw/2,-ph/2,pw,ph); ctx.strokeStyle=color;ctx.strokeRect(-pw/2,-ph/2,pw,ph); ctx.lineWidth=1;ctx.strokeStyle=ha(color,0.6); for(let r=0;r<3;r++)for(let c=0;c<4;c++){ctx.beginPath();ctx.arc(-pw/2+s*0.28+c*s*0.36,-ph/2+s*0.28+r*s*0.24,4,0,Math.PI*2);ctx.stroke();} ctx.beginPath();ctx.moveTo(-pw/2+10,-ph/4);ctx.lineTo(0,-ph/4);ctx.lineTo(0,0);ctx.lineTo(pw/2-10,0);ctx.stroke(); }
   ctx.shadowBlur=0; ctx.fillStyle=color; ctx.font=`bold ${Math.round(s*0.22)}px Arial`; ctx.textAlign='center';ctx.textBaseline='alphabetic';
@@ -268,8 +262,8 @@ const CameraFeed: React.FC<Props> = ({ isActive, onResults, showSkeleton, virtua
 
   // Frame-skip counter for heavier models
   const frameCountRef  = useRef(0);
-  const lastPoseRef    = useRef<any>(null);
-  const lastFaceRef    = useRef<any>(null);
+  const lastPoseRef    = useRef<PoseLandmarkerResult | null>(null);
+  const lastFaceRef    = useRef<FaceLandmarkerResult | null>(null);
   const lastObjRef     = useRef<DetectedObject[]>([]);
   const lastLeftObjRef = useRef<DetectedObject | null>(null);
   const lastRightObjRef= useRef<DetectedObject | null>(null);
@@ -294,6 +288,10 @@ const CameraFeed: React.FC<Props> = ({ isActive, onResults, showSkeleton, virtua
   const [errorMsg,    setErrorMsg]    = useState('');
 
   useEffect(() => { liveDataRef.current = liveData; }, [liveData]);
+
+  // onResults vía ref: el loop siempre llama al callback vigente sin reiniciar la cámara
+  const onResultsRef = useRef(onResults);
+  useEffect(() => { onResultsRef.current = onResults; }, [onResults]);
 
   useEffect(() => {
     objInitRef.current = false; objVelRef.current = {x:2.5,y:0};
@@ -513,25 +511,26 @@ const CameraFeed: React.FC<Props> = ({ isActive, onResults, showSkeleton, virtua
 
       // ── Inference ────────────────────────────────────────────────────────
       // Gesture every frame · Pose every 2 · Face every 3 · Objects every 5
-      let gestureResult: any = null;
-      let poseResult:    any = lastPoseRef.current;
-      let faceResult:    any = lastFaceRef.current;
+      // Si un modelo falla en un cuadro, se omite ese cuadro y se reutiliza el último resultado
+      let gestureResult: GestureRecognizerResult | null = null;
+      let poseResult:    PoseLandmarkerResult | null    = lastPoseRef.current;
+      let faceResult:    FaceLandmarkerResult | null    = lastFaceRef.current;
 
       try {
         if (gestureRef.current) gestureResult = gestureRef.current.recognizeForVideo(video, now);
-      } catch {}
+      } catch { /* cuadro omitido */ }
       if (frameCountRef.current % 2 === 0) {
-        try { if (poseRef.current) { poseResult = poseRef.current.detectForVideo(video, now); lastPoseRef.current = poseResult; } } catch {}
+        try { if (poseRef.current) { poseResult = poseRef.current.detectForVideo(video, now); lastPoseRef.current = poseResult; } } catch { /* cuadro omitido */ }
       }
       if (frameCountRef.current % 3 === 0) {
-        try { if (faceRef.current) { faceResult = faceRef.current.detectForVideo(video, now); lastFaceRef.current = faceResult; } } catch {}
+        try { if (faceRef.current) { faceResult = faceRef.current.detectForVideo(video, now); lastFaceRef.current = faceResult; } } catch { /* cuadro omitido */ }
       }
       if (frameCountRef.current % 5 === 0 && objDetRef.current) {
         try {
           const objRes = objDetRef.current.detectForVideo(video, now);
           const allDets: DetectedObject[] = (objRes.detections || [])
-            .filter((d: any) => d.categories?.[0]?.categoryName !== 'person' && (d.categories?.[0]?.score || 0) >= 0.35)
-            .map((d: any) => {
+            .filter((d) => d.categories?.[0]?.categoryName !== 'person' && (d.categories?.[0]?.score || 0) >= 0.35)
+            .map((d) => {
               const cat = d.categories[0].categoryName as string;
               const meta = getObjMeta(cat);
               return {
@@ -541,12 +540,12 @@ const CameraFeed: React.FC<Props> = ({ isActive, onResults, showSkeleton, virtua
               } as DetectedObject;
             });
           lastObjRef.current = allDets;
-        } catch {}
+        } catch { /* cuadro omitido: se conservan las detecciones anteriores */ }
       }
 
       // ── Parse hand results ────────────────────────────────────────────────
-      let leftLM:  any = null;
-      let rightLM: any = null;
+      let leftLM:  NormalizedLandmark[] | null = null;
+      let rightLM: NormalizedLandmark[] | null = null;
       let lGes: GestureInfo | null = null;
       let rGes: GestureInfo | null = null;
       let lState: HandState | null = null;
@@ -555,7 +554,7 @@ const CameraFeed: React.FC<Props> = ({ isActive, onResults, showSkeleton, virtua
       if (gestureResult) {
         for (let i=0; i<(gestureResult.handedness?.length||0); i++) {
           const handedness = gestureResult.handedness[i]?.[0]?.categoryName as string;
-          const lm         = gestureResult.landmarks?.[i];
+          const lm         = gestureResult.landmarks?.[i] ?? null;
           const g          = gestureResult.gestures?.[i]?.[0];
           const gType      = (g?.categoryName || 'None') as GestureType;
           const gScore     = g?.score || 0;
@@ -588,7 +587,7 @@ const CameraFeed: React.FC<Props> = ({ isActive, onResults, showSkeleton, virtua
       lastRightObjRef.current = rObjInHand;
 
       // Send to parent
-      onResults({
+      onResultsRef.current({
         poseLandmarks:      poseLM,
         leftHandLandmarks:  leftLM,
         rightHandLandmarks: rightLM,
@@ -607,7 +606,7 @@ const CameraFeed: React.FC<Props> = ({ isActive, onResults, showSkeleton, virtua
 
       // ── Update velocity trails + heatmap + pick/release events ────────────
       function updateVTrail(
-        lm: any,
+        lm: Landmark[] | null,
         vTrailRef: React.MutableRefObject<{x:number;y:number;vel:number}[]>,
         openRef: React.MutableRefObject<number>,
         pColor: string,
@@ -642,7 +641,7 @@ const CameraFeed: React.FC<Props> = ({ isActive, onResults, showSkeleton, virtua
       // ── Pick / Release event detection ────────────────────────────────────
       const now2 = Date.now();
       function checkPickRelease(
-        lm: any,
+        lm: Landmark[] | null,
         objInHand: DetectedObject | null,
         prevKeyRef: React.MutableRefObject<string|null>,
         side: 'L'|'R',
@@ -766,7 +765,7 @@ const CameraFeed: React.FC<Props> = ({ isActive, onResults, showSkeleton, virtua
         const pulse = 0.82 + 0.18 * Math.sin(Date.now() * 0.006);
 
         function drawHandTherblig(
-          lm: any,
+          lm: Landmark[] | null,
           therbligT: TherbligType | null | undefined,
           vTrail: {x:number;y:number;vel:number}[],
         ) {
@@ -909,7 +908,7 @@ const CameraFeed: React.FC<Props> = ({ isActive, onResults, showSkeleton, virtua
           ctx.shadowBlur = 0; ctx.restore();
         }
         // Floating object etiqueta near each hand wrist
-        function drawHandObjLabel(lm: any, det: DetectedObject | null, color: string) {
+        function drawHandObjLabel(lm: Landmark[] | null, det: DetectedObject | null, color: string) {
           if (!lm || !det) return;
           const wx = lm[0].x * W;
           const wy = lm[0].y * H;
@@ -1063,6 +1062,8 @@ const CameraFeed: React.FC<Props> = ({ isActive, onResults, showSkeleton, virtua
 
     setStatus('loading');
     let mounted = true;
+    // El <video> siempre está montado; se guarda aquí para que la limpieza no dependa del ref
+    const video = videoRef.current;
 
     (async () => {
       try {
@@ -1165,17 +1166,17 @@ const CameraFeed: React.FC<Props> = ({ isActive, onResults, showSkeleton, virtua
 
         startLoop();
         setStatus('ready');
-      } catch (e: any) {
-        if (mounted) { setErrorMsg(e?.message||'Error iniciando Vision AI'); setStatus('error'); }
+      } catch (e: unknown) {
+        if (mounted) { setErrorMsg((e instanceof Error && e.message)||'Error iniciando Vision AI'); setStatus('error'); }
       }
     })();
 
     return () => {
       mounted = false;
       cancelAnimationFrame(rafRef.current);
-      if (videoRef.current?.srcObject) {
-        (videoRef.current.srcObject as MediaStream).getTracks().forEach(t=>t.stop());
-        if (videoRef.current) videoRef.current.srcObject = null;
+      if (video?.srcObject) {
+        (video.srcObject as MediaStream).getTracks().forEach(t=>t.stop());
+        video.srcObject = null;
       }
       gestureRef.current?.close();
       poseRef.current?.close();

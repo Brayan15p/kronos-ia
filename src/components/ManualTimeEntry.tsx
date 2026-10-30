@@ -32,10 +32,11 @@ const ManualTimeEntry: React.FC = () => {
   const selectedOperator = operators.find((o) => o.id === selectedOp);
   const opCycles = cycles.filter((c) => c.operatorId === selectedOp);
 
-  // Reset manual times when steps change
+  // Reset manual times when steps change (solo al cambiar la cantidad de pasos, no al renombrarlos)
+  const stepCount = steps.length;
   React.useEffect(() => {
-    setManualStepTimes(steps.map(() => ""));
-  }, [steps.length]);
+    setManualStepTimes(Array.from({ length: stepCount }, () => ""));
+  }, [stepCount]);
 
   const handleManualAdd = () => {
     if (!selectedOperator) return;

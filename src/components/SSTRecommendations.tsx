@@ -76,9 +76,9 @@ const SSTRecommendations: React.FC = () => {
       }
 
       setRecommendations(resp.data?.recommendations || "No se generaron recomendaciones.");
-    } catch (e: any) {
+    } catch (e: unknown) {
       if (phaseTimerRef.current) clearInterval(phaseTimerRef.current);
-      setError(e.message || "Error inesperado");
+      setError((e instanceof Error && e.message) || "Error inesperado");
     }
     setLoading(false);
   };

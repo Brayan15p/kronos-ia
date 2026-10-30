@@ -95,9 +95,9 @@ const OperatorStepTimer: React.FC<OperatorTimerProps> = ({ operatorId, operatorN
     if (elapsed < 0.3 && stepTimings.length === 0) return;
     if (intervalRef.current) clearInterval(intervalRef.current);
     setIsRunning(false);
-    const currentTiming: StepTiming = elapsed > 0.1
+    const currentTiming: StepTiming | null = elapsed > 0.1
       ? { stepNumber: currentStep + 1, stepName: steps[currentStep].name, duration: elapsed, timestamp: new Date() }
-      : null as any;
+      : null;
     const allTimings = currentTiming ? [...stepTimings, currentTiming] : stepTimings;
     if (allTimings.length === 0) return;
     const totalDuration = allTimings.reduce((s, t) => s + t.duration, 0);
