@@ -13,3 +13,4 @@ Para ver los commits de cada agente: `git log --grep="^Agent:"` o `git log --for
 | 2026-10-31 | Claude Code | `claude-code/upbeat-mccarthy-urf0ml` | Cuentas y nube (organización → plantas → estudios, roles, concurrencia optimista), pruebas de permisos en Postgres, prueba de nube en navegador, CI completo y corrección de fuentes |
 | 2026-10-31 | Claude Code (subagente) | `claude-code/upbeat-mccarthy-urf0ml` | Ergonomía con confianza: confianza por segmento, detección de vista lateral/frontal, REBA y tests; detectó el error de ángulos del RULA |
 | 2026-10-31 | Claude Code (subagente) | `claude-code/upbeat-mccarthy-urf0ml` | RULA según McAtamney & Corlett (1993) con tablas A/B/C, geometría corporal compartida con REBA y tests de corrección |
+| 2026-10-31 | Claude Code | `claude-code/upbeat-mccarthy-urf0ml` | Neon como base de datos principal (Neon Auth + Data API), esquema portátil Neon/Supabase y pruebas de permisos en ambos modos |

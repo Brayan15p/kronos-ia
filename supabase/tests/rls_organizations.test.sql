@@ -69,7 +69,7 @@ select pg_temp.check((select count(*) from public.studies) = 0, 'borrar organiza
 commit;
 
 -- 6. Anónimo sin acceso
-set role anon;
+set role :anon_role;
 do $$ begin perform count(*) from public.studies; raise exception 'FALLO: anon leyó estudios'; exception when insufficient_privilege then raise notice 'ok: anónimo sin acceso'; end $$;
 do $$ begin perform public.create_organization('anon'); raise exception 'FALLO: anon creó org'; exception when insufficient_privilege then raise notice 'ok: anónimo no crea organizaciones'; end $$;
 reset role;

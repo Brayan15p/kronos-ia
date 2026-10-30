@@ -54,20 +54,29 @@ Variables de entorno: copia [`.env.example`](.env.example) a `.env`. El asesor d
   `src/workers/montecarlo.worker.ts` (simulación en un hilo aparte).
 - **IA:** `api/llm-interpret.ts` (Vercel Edge, OpenRouter con streaming) y
   `supabase/functions/sst-recommendations`.
-- **Base de datos:** Supabase (`supabase/migrations/`): organizaciones, miembros con rol, plantas y
-  estudios con control de versión (concurrencia optimista). Permisos probados en `supabase/tests/`.
-- **Nube:** `src/lib/cloud.ts` (sin variables de Supabase, la app funciona solo en local).
+- **Base de datos:** Postgres en **Neon** (recomendado) o Supabase, con el mismo esquema
+  (`supabase/migrations/20261031_organizations.sql`): organizaciones, miembros con rol, plantas y
+  estudios con control de versión (concurrencia optimista). Permisos probados en ambos modos en
+  `supabase/tests/` (`npm run test:db`).
+- **Nube:** `src/lib/cloud.ts` elige Neon (Neon Auth + Data API) si están sus variables, si no
+  Supabase; sin ninguna, la app funciona solo en local.
 
-### Base de datos en producción
+### Base de datos en producción: Neon (recomendado)
 
-Aplica las migraciones **en orden** desde el editor SQL de Supabase (o con `supabase db push`):
+1. En Vercel → proyecto `kronos-ia` → **Storage** → conecta la base de datos de **Neon** (la
+   integración ya está instalada en el equipo, plan gratuito).
+2. En la consola de Neon → tu base de datos → **Data API** → **Enable**, con **Neon Auth** como
+   proveedor (viene activado por defecto). Copia la URL de Auth y la URL del Data API.
+3. En Vercel → Settings → Environment Variables, crea `VITE_NEON_AUTH_URL` y
+   `VITE_NEON_DATA_API_URL` con esas URLs (Production y Preview) y vuelve a desplegar.
+4. En el SQL Editor de Neon, ejecuta `supabase/migrations/20261031_organizations.sql`
+   (solo ese archivo; se puede ejecutar más de una vez sin problema).
 
-1. `20260530_kronos_cloud.sql`
-2. `20261030_secure_rls.sql`
-3. `20261031_organizations.sql`
+### Alternativa: Supabase
 
-En Supabase → Authentication → URL Configuration, pon `https://kronos-ia.vercel.app` como Site URL
-para que el enlace de confirmación de correo vuelva a la app.
+Aplica en orden `20260530_kronos_cloud.sql`, `20261030_secure_rls.sql` y
+`20261031_organizations.sql`, y en Authentication → URL Configuration pon
+`https://kronos-ia.vercel.app` como Site URL. Si existen variables de Neon, la app usa Neon.
 
 ## Documentación
 
