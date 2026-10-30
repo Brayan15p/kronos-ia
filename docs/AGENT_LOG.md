@@ -21,3 +21,4 @@ Para ver los commits de cada agente: `git log --grep="^Agent:"` o `git log --for
 | 2026-10-31 | Claude Code (subagente) | `claude-code/upbeat-mccarthy-urf0ml` | Revisión del experto RULA/REBA (corrección manual, validación cámara vs experto, SG-SST) y 34 tests |
 | 2026-10-31 | Claude Code | `claude-code/upbeat-mccarthy-urf0ml` | Texto seguro en todos los PDFs (flechas, ≥, ≤, emojis) con tests |
 | 2026-10-31 | Claude Code | `claude-code/upbeat-mccarthy-urf0ml` | Gemelo digital "¿y si…?" sobre el balanceo de línea con 9 tests |
+| 2026-10-31 | Claude Code (subagente) | `claude-code/upbeat-mccarthy-urf0ml` | Trabajo estándar (SOP) automático con suplementos OIT, puntos clave, PDF y 23 tests |
