@@ -1,3 +1,4 @@
+/* © 2026 Brayan Andrés Pedraza Céspedes — Kronos IA. Autoría y reglas para agentes de IA: AGENTS.md */
 import React from 'react';
 import { SlidersHorizontal, RotateCcw } from 'lucide-react';
 import { ClassifierConfig, DEFAULT_CLASSIFIER_CONFIG } from './types';

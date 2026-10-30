@@ -1,0 +1,16 @@
+# © 2026 Brayan Andrés Pedraza Céspedes — Kronos IA. Comprueba que el código conserva la autoría.
+name: Autoría
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  authorship:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: node scripts/authorship.mjs

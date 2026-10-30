@@ -1,3 +1,4 @@
+/* © 2026 Brayan Andrés Pedraza Céspedes — Kronos IA. Autoría y reglas para agentes de IA: AGENTS.md */
 import React, { useMemo } from 'react';
 import { TherbligType, TherbligEvent } from './types';
 import { THERBLIG_INFO } from './utils';

@@ -1,3 +1,4 @@
+/* © 2026 Brayan Andrés Pedraza Céspedes — Kronos IA. Autoría y reglas para agentes de IA: AGENTS.md */
 import React, { useMemo } from "react";
 import { DollarSign, TrendingDown, AlertTriangle, Target, Flame, ArrowDown, Clock, Users, Zap, BarChart3 } from "lucide-react";
 import { useTimeStudy } from "@/context/TimeStudyContext";

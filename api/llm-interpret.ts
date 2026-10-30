@@ -1,3 +1,4 @@
+/* © 2026 Brayan Andrés Pedraza Céspedes — Kronos IA. Autoría y reglas para agentes de IA: AGENTS.md */
 // Vercel Edge Function — OpenRouter proxy con streaming SSE + chat multi-turn
 // Mantiene la API key server-side: nunca expuesta al cliente.
 export const config = { runtime: "edge" };

@@ -1,3 +1,4 @@
+/* © 2026 Brayan Andrés Pedraza Céspedes — Kronos IA. Autoría y reglas para agentes de IA: AGENTS.md */
 // KRONOS Monte Carlo — Web Worker
 // Corre en hilo separado: la UI nunca se congela.
 // Todas las constantes son module-level: cero allocations dentro del hot loop.

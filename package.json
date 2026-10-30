@@ -2,6 +2,8 @@
   "name": "vite_react_shadcn_ts",
   "private": true,
   "version": "0.0.0",
+  "author": "Brayan Andrés Pedraza Céspedes <apedrazacespedes@gmail.com> (https://github.com/Brayan15p)",
+  "license": "UNLICENSED",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -10,7 +12,9 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "authorship": "node scripts/authorship.mjs",
+    "authorship:fix": "node scripts/authorship.mjs --fix"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",

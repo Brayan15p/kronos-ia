@@ -1,3 +1,4 @@
+/* © 2026 Brayan Andrés Pedraza Céspedes — Kronos IA. Autoría y reglas para agentes de IA: AGENTS.md */
 import React from 'react';
 import { EmotionState, EmotionLevel } from './types';
 import { EMOTION_INFO } from './utils';

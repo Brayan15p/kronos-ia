@@ -1,3 +1,4 @@
+/* © 2026 Brayan Andrés Pedraza Céspedes — Kronos IA. Autoría y reglas para agentes de IA: AGENTS.md */
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Camera, WifiOff } from 'lucide-react';
 import type {

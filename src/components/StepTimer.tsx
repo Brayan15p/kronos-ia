@@ -1,3 +1,4 @@
+/* © 2026 Brayan Andrés Pedraza Céspedes — Kronos IA. Autoría y reglas para agentes de IA: AGENTS.md */
 import React, { useState, useRef, useCallback } from "react";
 import { Play, Pause, RotateCcw, Save, SkipForward, Trash2, User, CheckCircle2, Edit2, Check, X } from "lucide-react";
 import { useTimeStudy, CycleRecord, StepTiming } from "@/context/TimeStudyContext";
