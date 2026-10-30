@@ -47,6 +47,11 @@ latinoamericana de manufactura manual.
 - **Gemelo digital "¿y si…?":** copia virtual de la línea con los tiempos medidos. Palancas por paso,
   variabilidad, demanda, turnos, estaciones y costos; compara producción, capacidad, riesgo de superar
   el takt, mano de obra por unidad y margen frente a la línea actual (Monte Carlo reproducible).
+- **Copiloto de planta ("¿qué hago el lunes?"):** cruza tiempos, balanceo, calidad, competencias,
+  Monte Carlo y SG-SST, y entrega oportunidades priorizadas: primero la seguridad (GTC 45 nivel I–II
+  sin acción, dosis de ruido > 100 %, posturas críticas), luego el ahorro en pesos ÷ esfuerzo, sin
+  contar dos veces el mismo ahorro. Cada cifra muestra cómo se calculó y su confianza; la explicación
+  con IA es opcional y solo recibe la lista ya calculada y anonimizada.
 - **Trabajo estándar (SOP) automático:** hoja del puesto con tiempo observado (mediana), valoración
   del ritmo, suplementos de la tabla de la OIT y tiempo estándar por paso; observaciones necesarias
   (±5 %, 95 %), puntos clave sugeridos de calidad (defectos e inspección), seguridad (RULA/REBA y
