@@ -47,6 +47,11 @@ latinoamericana de manufactura manual.
 - **Gemelo digital "¿y si…?":** copia virtual de la línea con los tiempos medidos. Palancas por paso,
   variabilidad, demanda, turnos, estaciones y costos; compara producción, capacidad, riesgo de superar
   el takt, mano de obra por unidad y margen frente a la línea actual (Monte Carlo reproducible).
+- **Pasos automáticos desde el video (beta):** en Vision AI se enseña el método una vez (el
+  observador marca los pasos de un ciclo de referencia) y desde ahí cada ciclo detectado trae sus
+  tiempos por paso y los pasos omitidos, alineando la trayectoria de las manos con DTW. En ciclos
+  sintéticos: 0 omisiones falsas, 100 % de omisiones detectadas y 0,12 s de error por paso (ruido
+  moderado). Falta validarlo con video real.
 - **Secuencia del método (pasos omitidos o fuera de orden):** modo "Secuencia observada" en el
   cronómetro (el observador marca el paso real, con alertas en vivo de saltos y omisiones) y análisis
   por paso y por operario que mide si desviarse del método va con más defectos (prueba exacta de
@@ -69,14 +74,14 @@ latinoamericana de manufactura manual.
 
 | # | Qué | Por qué | Esfuerzo |
 |---|---|---|---|
-| 2 | **Validar los ciclos automáticos con un video real** y medir el error frente al cronómetro; v2 con ejemplo marcado + DTW para procesos sin posición inicial clara | Es la promesa central; hay que poder decir "error < 3 %" con datos | M |
+| 2 | **Validar los ciclos y los pasos automáticos con un video real** y medir el error frente al cronómetro (el reconocimiento de pasos con DTW ya está; falta el dato real) | Es la promesa central; hay que poder decir "error < 3 %" con datos | M |
 | 3b | **Validar contra un ergónomo en 10 puestos reales** con la revisión del experto (ya construida: guarda los pares cámara vs experto y calcula la concordancia) | Convierte el tamizaje en un dato defendible | S |
 | 4b | **Revisión del paquete SG-SST por un profesional SST con licencia** (mapeo a GTC 45 y Res. 0312) antes de usarlo en ventas | Las propuestas de ND/NE son convención de Kronos, no de la guía | S |
 
 ## Siguiente (2–6 meses): más valor por planta
 
 5. **Fotograma clave por paso en el trabajo estándar**, tomado del video de Vision AI.
-8. **Secuencia automática desde el video** (Vision AI reconoce el paso con DTW sobre el esqueleto), para detectar omisiones sin observador.
+8. **Pasos fuera de orden desde el video** y reconocimiento con más de una referencia por paso (variantes del método).
 9. **IA en el navegador (WebLLM)** con base de conocimiento lean/SST; OpenRouter como respaldo.
 
 ## Después (6–18 meses): ventaja difícil de copiar

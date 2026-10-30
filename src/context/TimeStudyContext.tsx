@@ -58,6 +58,8 @@ export interface CycleRecord {
   omittedSteps?: number[];
   /** "observada": `steps` está en el orden real en que se hicieron, no forzado por el cronómetro. */
   sequenceMode?: "observada";
+  /** "vision": los tiempos por paso y las omisiones los reconoció Vision AI, no un observador. */
+  stepsSource?: "vision";
 }
 
 export interface DefectRecord {

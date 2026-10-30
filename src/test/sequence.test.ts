@@ -154,3 +154,16 @@ describe("cronómetro en modo secuencia observada", () => {
     expect(liveDeviations(steps, [1, 3], [2]).map((d) => `${d.kind}:${d.stepNumber}`)).toEqual(["omitido:2"]);
   });
 });
+
+describe("ciclos con pasos de Vision AI", () => {
+  it("cuentan la omisión detectada y se distinguen de los observados", () => {
+    const r = buildSequenceReport(steps, [
+      cycle([[1, 10], [2, 10], [4, 10], [5, 10]], { omittedSteps: [3], stepsSource: "vision" }),
+      normal({ sequenceMode: "observada" }),
+    ]);
+    expect(r.visionCycles).toBe(1);
+    expect(r.observedOrderCycles).toBe(1);
+    expect(r.analyzed[0].fromVision).toBe(true);
+    expect(r.steps.find((s) => s.stepNumber === 3)!.counts.omitido).toBe(1);
+  });
+});
