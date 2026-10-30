@@ -1,7 +1,10 @@
 /* © 2026 Brayan Andrés Pedraza Céspedes — Kronos IA. Autoría y reglas para agentes de IA: AGENTS.md */
 import React from 'react';
-import { PostureScore, HeadPose, EyeState } from './types';
-import { Activity, Eye, AlertTriangle } from 'lucide-react';
+import { PostureScore, HeadPose, EyeState, ErgoSegment, SegmentConfidence } from './types';
+import { Activity, Eye, AlertTriangle, Camera } from 'lucide-react';
+import {
+  CONFIDENCE_COLOR, REBA_RISK_INFO, VIEW_LABEL, confidenceExplanation, confidenceLevel,
+} from './ergonomics';
 
 interface Props {
   posture: PostureScore | null;
@@ -19,13 +22,36 @@ const RULA_CONFIG: Record<number, { label: string; color: string; action: string
   7: { label: 'Cambiar ya',     color: '#f43f5e', action: 'Acción inmediata' },
 };
 
-function AngleBar({ label, value, max, warn }: { label: string; value: number; max: number; warn: number }) {
+function ConfidenceDot({ segment, conf }: { segment: ErgoSegment; conf?: SegmentConfidence }) {
+  if (!conf) return null;
+  const color = CONFIDENCE_COLOR[conf.level];
+  const text = confidenceExplanation(segment, conf);
+  return (
+    <span
+      role="img"
+      aria-label={text}
+      title={text}
+      data-confidence={conf.level}
+      className="inline-block w-2 h-2 rounded-full flex-shrink-0 cursor-help"
+      style={{ background: color, boxShadow: `0 0 4px ${color}88` }}
+    />
+  );
+}
+
+function AngleBar({ label, value, max, warn, segment, conf, colorFor }: {
+  label: string; value: number; max: number; warn: number;
+  segment?: ErgoSegment; conf?: SegmentConfidence;
+  colorFor?: (v: number) => string;
+}) {
   const pct = Math.min(100, (value / max) * 100);
-  const color = value > warn ? '#f43f5e' : value > warn * 0.6 ? '#fbbf24' : '#22d3ee';
+  const color = colorFor ? colorFor(value) : value > warn ? '#f43f5e' : value > warn * 0.6 ? '#fbbf24' : '#22d3ee';
   return (
     <div className="space-y-0.5">
       <div className="flex justify-between text-xs">
-        <span className="text-muted-foreground">{label}</span>
+        <span className="flex items-center gap-1.5 text-muted-foreground">
+          {segment && <ConfidenceDot segment={segment} conf={conf} />}
+          {label}
+        </span>
         <span className="font-mono font-semibold" style={{ color }}>{value}°</span>
       </div>
       <div className="h-1.5 rounded-full bg-white/[0.06] overflow-hidden">
@@ -35,8 +61,25 @@ function AngleBar({ label, value, max, warn }: { label: string; value: number; m
   );
 }
 
+// Flexión de codo: 60–100° es la zona neutra en RULA/REBA.
+const elbowColor = (v: number) => (v >= 60 && v <= 100 ? '#22d3ee' : '#fbbf24');
+
 const PostureAnalyzer: React.FC<Props> = ({ posture, head, eyes }) => {
   const rulaConfig = posture ? RULA_CONFIG[posture.rula] || RULA_CONFIG[7] : null;
+  const conf = posture?.confidence;
+  const reba = posture?.reba;
+  const rebaInfo = reba ? REBA_RISK_INFO[reba.risk] : null;
+  const overallLevel = posture?.overallConfidence != null ? confidenceLevel(posture.overallConfidence) : null;
+  const view = posture?.view?.view;
+  const rebaTitle = reba
+    ? [
+        `REBA (Hignett y McAtamney, 2000): ${reba.score}/15 · riesgo ${rebaInfo?.label.toLowerCase()} · actuación: ${rebaInfo?.action.toLowerCase()}.`,
+        `Lado analizado: ${reba.side}. Confianza ${confidenceLevel(reba.overallConfidence)} (${Math.round(reba.overallConfidence * 100)}%).`,
+        'Carga, agarre y actividad se asumen en 0: pueden subestimar el riesgo.',
+        reba.legsAssumed ? 'Piernas no visibles: se asumen neutras.' : '',
+        reba.wristAssumed ? 'Mano no visible: muñeca asumida neutra.' : '',
+      ].filter(Boolean).join(' ')
+    : '';
 
   return (
     <div className="glass-card p-4 space-y-3">
@@ -73,15 +116,57 @@ const PostureAnalyzer: React.FC<Props> = ({ posture, head, eyes }) => {
           </p>
           <p className="text-xs text-muted-foreground">{rulaConfig?.action || 'Sin detección'}</p>
         </div>
+        {reba && rebaInfo && (
+          <div
+            className="ml-auto flex-shrink-0 text-center px-2.5 py-1.5 rounded-lg bg-white/[0.04] border border-white/[0.06] cursor-help"
+            title={rebaTitle}
+            aria-label={rebaTitle}
+          >
+            <p className="text-[10px] uppercase tracking-wide text-muted-foreground">REBA</p>
+            <p className="text-lg leading-tight font-mono font-bold" style={{ color: rebaInfo.color }}>
+              {reba.score}<span className="text-[10px] text-muted-foreground font-normal">/15</span>
+            </p>
+            <p className="text-[10px] font-semibold" style={{ color: rebaInfo.color }}>{rebaInfo.label}</p>
+          </div>
+        )}
       </div>
+
+      {/* Confianza global y aviso de tamizaje */}
+      {posture && overallLevel && (
+        <div className="space-y-1.5">
+          <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+            <span
+              className="inline-block w-2 h-2 rounded-full flex-shrink-0"
+              style={{ background: CONFIDENCE_COLOR[overallLevel] }}
+              aria-hidden="true"
+            />
+            Confianza {overallLevel} ({Math.round((posture.overallConfidence ?? 0) * 100)}%)
+            {view && <span className="ml-auto">Vista: {VIEW_LABEL[view]}</span>}
+          </p>
+          <p className="text-[11px] leading-snug text-muted-foreground">
+            Tamizaje: confirma con un evaluador cuando la confianza sea baja.
+          </p>
+          {view === 'frontal' && (
+            <div
+              role="note"
+              className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-[11px] leading-snug"
+              style={{ background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.25)', color: '#fbbf24' }}
+            >
+              <Camera className="w-3.5 h-3.5 flex-shrink-0" />
+              Para una medición más fiable, graba de lado (perfil).
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Angle bars */}
       {posture && (
         <div className="space-y-2.5">
-          <AngleBar label="Cuello" value={posture.neckAngle} max={60} warn={20} />
-          <AngleBar label="Tronco" value={posture.trunkAngle} max={80} warn={20} />
-          <AngleBar label="Brazo superior" value={posture.upperArmAngle} max={90} warn={45} />
-          <AngleBar label="Muñeca" value={posture.wristAngle} max={30} warn={15} />
+          <AngleBar label="Cuello" value={posture.neckAngle} max={60} warn={20} segment="cuello" conf={conf?.cuello} />
+          <AngleBar label="Tronco" value={posture.trunkAngle} max={80} warn={20} segment="tronco" conf={conf?.tronco} />
+          <AngleBar label="Brazo superior" value={posture.upperArmAngle} max={90} warn={45} segment="brazo" conf={conf?.brazo} />
+          <AngleBar label="Antebrazo (flexión de codo)" value={Math.max(0, 180 - posture.forearmAngle)} max={150} warn={100} segment="antebrazo" conf={conf?.antebrazo} colorFor={elbowColor} />
+          <AngleBar label="Muñeca" value={posture.wristAngle} max={30} warn={15} segment="muneca" conf={conf?.muneca} />
         </div>
       )}
 

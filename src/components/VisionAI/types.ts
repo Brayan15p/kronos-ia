@@ -28,6 +28,49 @@ export interface EmotionState {
   timestamp: number;
 }
 
+// ── Ergonomía honesta: confianza por segmento, vista de cámara y REBA ────────
+
+/** Segmentos corporales evaluados (cuello, tronco, brazo, antebrazo, muñeca y piernas). */
+export type ErgoSegment = 'cuello' | 'tronco' | 'brazo' | 'antebrazo' | 'muneca' | 'piernas';
+
+/** Semáforo de confianza: alta = verde, media = amarillo, baja = rojo. */
+export type ConfidenceLevel = 'alta' | 'media' | 'baja';
+
+export interface SegmentConfidence {
+  value: number;          // 0–1: prior de fiabilidad × visibilidad × factor de vista
+  level: ConfidenceLevel;
+  visibility: number;     // 0–1: visibilidad mínima de los landmarks del segmento
+  assumed?: boolean;      // true → el segmento no se midió y se asumió neutro
+}
+
+export type SegmentConfidenceMap = Record<ErgoSegment, SegmentConfidence>;
+
+/** Ángulo desde el que la cámara ve al operario. */
+export type CameraView = 'lateral' | 'oblicua' | 'frontal' | 'desconocida';
+
+export interface ViewEstimate {
+  view: CameraView;
+  /** Ancho de hombros en x ÷ largo del torso (corregido por aspecto). ~0 de perfil, ~0.7 de frente. */
+  ratio: number;
+}
+
+export type RebaRisk = 'inapreciable' | 'bajo' | 'medio' | 'alto' | 'muy alto';
+
+export interface RebaResult {
+  score: number;          // 1–15
+  risk: RebaRisk;
+  scoreA: number;         // Tabla A + carga
+  scoreB: number;         // Tabla B + agarre
+  tableC: number;
+  components: { trunk: number; neck: number; legs: number; upperArm: number; lowerArm: number; wrist: number };
+  angles: { trunk: number; neck: number; knee: number | null; upperArm: number; elbow: number; wrist: number | null };
+  side: 'izquierdo' | 'derecho';
+  legsAssumed: boolean;
+  wristAssumed: boolean;
+  confidence: SegmentConfidenceMap;
+  overallConfidence: number; // 0–1
+}
+
 export interface PostureScore {
   rula: number;
   neckAngle: number;
@@ -36,6 +79,13 @@ export interface PostureScore {
   forearmAngle: number;
   wristAngle: number;
   risk: 'low' | 'medium' | 'high' | 'critical';
+  // Campos opcionales (ergonomía honesta). Opcionales para no romper otros consumidores.
+  /** Confianza por segmento de los ángulos RULA mostrados (lado izquierdo). */
+  confidence?: SegmentConfidenceMap;
+  /** Confianza global 0–1 (promedio de cuello, tronco, brazo, antebrazo y muñeca). */
+  overallConfidence?: number;
+  view?: ViewEstimate;
+  reba?: RebaResult;
 }
 
 export interface HeadPose {
@@ -109,6 +159,9 @@ export interface SessionSnapshot {
   emotionScore: number;
   rula: number;
   ear: number;
+  reba?: number;
+  /** Confianza ergonómica global 0–1 en el momento de la muestra. */
+  ergoConfidence?: number;
 }
 
 export interface VisionSession {

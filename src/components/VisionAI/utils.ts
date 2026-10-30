@@ -1,5 +1,6 @@
 /* © 2026 Brayan Andrés Pedraza Céspedes — Kronos IA. Autoría y reglas para agentes de IA: AGENTS.md */
 import { Landmark, TherbligType, EmotionState, EmotionLevel, PostureScore, HeadPose, EyeState, ClassifierConfig, DEFAULT_CLASSIFIER_CONFIG, GestureType, GripType, HandState, ObjectCategory, BlendshapeCategory } from './types';
+import { estimateCameraView, computeSegmentConfidences, overallConfidence, calculateREBA } from './ergonomics';
 
 export function dist2d(a: Landmark, b: Landmark): number {
   return Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2);
@@ -134,7 +135,16 @@ export function calculateRULA(pose: Landmark[], strictness = 1): PostureScore {
   const rula  = Math.min(7, Math.max(1, score));
   const risk: PostureScore['risk'] = rula <= 2 ? 'low' : rula <= 4 ? 'medium' : rula <= 6 ? 'high' : 'critical';
 
-  return { rula, neckAngle: Math.round(neckAngle), trunkAngle: Math.round(trunkAngle), upperArmAngle: Math.round(upperArmAngle), forearmAngle: Math.round(forearmAngle), wristAngle: Math.round(wristAngle), risk };
+  // Ergonomía honesta: vista de cámara, confianza por segmento (lado izquierdo, que es el
+  // que usan los ángulos RULA de arriba) y REBA. No alteran la puntuación RULA.
+  const view = estimateCameraView(pose);
+  const confidence = computeSegmentConfidences(pose, 'izquierdo', view.view);
+  const reba = calculateREBA(pose, { view }) ?? undefined;
+
+  return {
+    rula, neckAngle: Math.round(neckAngle), trunkAngle: Math.round(trunkAngle), upperArmAngle: Math.round(upperArmAngle), forearmAngle: Math.round(forearmAngle), wristAngle: Math.round(wristAngle), risk,
+    confidence, overallConfidence: overallConfidence(confidence), view, reba,
+  };
 }
 
 export function analyzeFace(face: Landmark[], drowsyEAR = 0.21): { emotion: EmotionState; head: HeadPose; eyes: EyeState } {

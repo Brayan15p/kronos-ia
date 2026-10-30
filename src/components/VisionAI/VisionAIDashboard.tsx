@@ -276,6 +276,8 @@ const VisionAIDashboard: React.FC = () => {
         emotionScore: currentEmotRef.current?.score    || 50,
         rula:         currentPostureRef.current?.rula  || 1,
         ear:          currentEarRef.current,
+        reba:           currentPostureRef.current?.reba?.score,
+        ergoConfidence: currentPostureRef.current?.overallConfidence,
       }];
     }
   }, []);
