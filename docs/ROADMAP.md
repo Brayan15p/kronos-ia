@@ -47,6 +47,10 @@ latinoamericana de manufactura manual.
 - **Gemelo digital "¿y si…?":** copia virtual de la línea con los tiempos medidos. Palancas por paso,
   variabilidad, demanda, turnos, estaciones y costos; compara producción, capacidad, riesgo de superar
   el takt, mano de obra por unidad y margen frente a la línea actual (Monte Carlo reproducible).
+- **Secuencia del método (pasos omitidos o fuera de orden):** modo "Secuencia observada" en el
+  cronómetro (el observador marca el paso real, con alertas en vivo de saltos y omisiones) y análisis
+  por paso y por operario que mide si desviarse del método va con más defectos (prueba exacta de
+  Fisher). El hallazgo entra al Copiloto de planta como oportunidad de calidad.
 - **Copiloto de planta ("¿qué hago el lunes?"):** cruza tiempos, balanceo, calidad, competencias,
   Monte Carlo y SG-SST, y entrega oportunidades priorizadas: primero la seguridad (GTC 45 nivel I–II
   sin acción, dosis de ruido > 100 %, posturas críticas), luego el ahorro en pesos ÷ esfuerzo, sin
@@ -72,7 +76,7 @@ latinoamericana de manufactura manual.
 ## Siguiente (2–6 meses): más valor por planta
 
 5. **Fotograma clave por paso en el trabajo estándar**, tomado del video de Vision AI.
-8. **Detección de pasos omitidos o fuera de orden** (pasar de medir tiempo a prevenir defectos).
+8. **Secuencia automática desde el video** (Vision AI reconoce el paso con DTW sobre el esqueleto), para detectar omisiones sin observador.
 9. **IA en el navegador (WebLLM)** con base de conocimiento lean/SST; OpenRouter como respaldo.
 
 ## Después (6–18 meses): ventaja difícil de copiar

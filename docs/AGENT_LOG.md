@@ -23,3 +23,4 @@ Para ver los commits de cada agente: `git log --grep="^Agent:"` o `git log --for
 | 2026-10-31 | Claude Code | `claude-code/upbeat-mccarthy-urf0ml` | Gemelo digital "¿y si…?" sobre el balanceo de línea con 9 tests |
 | 2026-10-31 | Claude Code (subagente) | `claude-code/upbeat-mccarthy-urf0ml` | Trabajo estándar (SOP) automático con suplementos OIT, puntos clave, PDF y 23 tests |
 | 2026-10-31 | Claude Code (subagente) | `claude-code/upbeat-mccarthy-urf0ml` | Copiloto de planta: 11 detectores con impacto en COP, prioridad de seguridad, narración IA anonimizada y 45 tests |
+| 2026-10-31 | Claude Code | `claude-code/upbeat-mccarthy-urf0ml` | Secuencia del método: pasos omitidos/fuera de orden, modo secuencia observada en el cronómetro, asociación con defectos (Fisher) y detector en el Copiloto; 21 tests |

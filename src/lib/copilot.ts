@@ -33,6 +33,7 @@
  * Los nombres de los operarios nunca se escriben en los textos: se usa la marca opToken(id),
  * que la interfaz resuelve con el nombre real y la narración por IA con «Operario A/B…».
  */
+import { buildSequenceReport, DEVIATION_LABEL } from "@/lib/sequence";
 import type {
   CostConfig, CycleRecord, DefectRecord, OperatorConfig, QualityCheck, StepConfig,
 } from "@/context/TimeStudyContext";
@@ -122,12 +123,12 @@ const SEVERITY_ORDER: Record<Severity, number> = { critica: 0, alta: 1, media: 2
 /** Pestañas de Kronos que muestran la evidencia (TabId de Index). */
 export type CopilotTab =
   | "timer" | "steps" | "cost" | "quality" | "defects" | "line-balance" | "skills"
-  | "montecarlo" | "sgsst" | "environment" | "vision-ai";
+  | "montecarlo" | "sgsst" | "environment" | "vision-ai" | "sequence";
 
 export type DetectorId =
   | "cuello-botella" | "eficiencia-linea" | "variabilidad-paso" | "operarios-estandar" | "punto-unico-falla"
   | "calidad-global" | "calidad-operario" | "gtc45-sin-accion" | "dosis-ruido" | "iluminacion"
-  | "postura-critica" | "capacidad-proceso" | "medicion";
+  | "postura-critica" | "capacidad-proceso" | "secuencia-metodo" | "medicion";
 
 export interface ImpactInput { label: string; value: string }
 
@@ -834,6 +835,63 @@ function detectQuality(ctx: Ctx): OpportunityDraft[] {
   return out;
 }
 
+// ── Secuencia del método: pasos omitidos o alterados que van con defectos ─────────
+
+function detectMethodSequence(ctx: Ctx): OpportunityDraft[] {
+  const report = buildSequenceReport(ctx.s.steps, ctx.cycles, ctx.s.defects ?? []);
+  const top = report.findings[0];
+  if (!top) return [];
+  const a = top.association;
+  const n = a.withDev + a.without;
+  const devShare = n > 0 ? a.withDev / n : 0;
+  const lift = a.rateWith - a.rateWithout;
+  const units = ctx.units;
+  const value = ctx.productValue;
+  const monthly = units !== null && value !== null ? lift * devShare * units * value : null;
+  const kinds = (["omitido", "fuera-de-orden", "repetido", "muy-corto"] as const)
+    .filter((k) => top.counts[k] > 0)
+    .map((k) => `${DEVIATION_LABEL[k].toLowerCase()} ${top.counts[k]}`)
+    .join(", ");
+  const p = a.pValue < 0.001 ? "p < 0,001" : `p = ${fmt(a.pValue, 3)}`;
+  return [{
+    id: `secuencia-metodo:${top.stepNumber}`,
+    detector: "secuencia-metodo",
+    kind: "mejora",
+    area: "calidad",
+    title: `Paso ${top.stepNumber} · ${top.name}: saltarlo o alterarlo va con ${pct(a.rateWith)} de defectos`,
+    diagnosis: `En ${a.withDev} de ${n} ciclos el paso no se hizo como dice el método (${kinds}). ` +
+      `Salieron con defecto ${a.withDevDefective} de ${a.withDev} (${pct(a.rateWith)}), frente a ${a.withoutDefective} de ${a.without} ` +
+      `(${pct(a.rateWithout)}) cuando se siguió (${p}). Es una asociación, no una causa comprobada.`,
+    action: "Pon un poka-yoke o una verificación en ese paso (que no se pueda pasar al siguiente sin hacerlo), refuerza el método " +
+      "con quienes más se desvían y vuelve a medir con Secuencia observada en 2 semanas.",
+    impact: impact({
+      monthlyCOP: monthly,
+      formula: "(tasa de defectos al desviarse − tasa al seguir el método) × frecuencia de la desviación × unidades/mes × valor del producto",
+      inputs: [
+        { label: "Defectos al desviarse", value: `${a.withDevDefective} ÷ ${a.withDev} = ${pct(a.rateWith, 1)}` },
+        { label: "Defectos al seguir el método", value: `${a.withoutDefective} ÷ ${a.without} = ${pct(a.rateWithout, 1)}` },
+        { label: "Frecuencia de la desviación", value: `${a.withDev} ÷ ${n} = ${pct(devShare, 1)}` },
+        { label: "Unidades/mes (meta)", value: units !== null ? int(units) : "sin dato" },
+        { label: "Valor del producto", value: value !== null ? formatCOP(value) : "sin dato" },
+      ],
+      assumptions: [
+        "Si nadie se desviara en ese paso, su tasa de defectos sería la de los ciclos que siguen el método.",
+        "Cada unidad defectuosa se pierde por su valor completo (cota superior).",
+        "Prueba exacta de Fisher con p < 0,05; la asociación no prueba la causa.",
+      ],
+      note: monthly === null ? "Falta el valor del producto o la meta mensual para monetizar." : "",
+      overlapGroup: "calidad",
+    }),
+    confidence: countConfidence(n, QUALITY_HIGH_CONFIDENCE, QUALITY_MEDIUM_CONFIDENCE),
+    confidenceReason: `${n} ciclo(s) con secuencia revisada (${report.observedOrderCycles} con secuencia observada).`,
+    effort: "M",
+    severity: "media",
+    severityScore: 0,
+    safety: null,
+    evidence: [{ tab: "sequence", label: "Secuencia del método" }, { tab: "defects", label: "Defectos" }],
+  }];
+}
+
 // ── Capacidad frente al tiempo objetivo (Monte Carlo) ────────────────────────────
 
 function detectCapability(ctx: Ctx): OpportunityDraft[] {
@@ -1304,6 +1362,7 @@ export function analyzePlant(snapshot: CopilotSnapshot): CopilotReport {
     ...detectOperatorsBelowStandard(ctx),
     ...detectSinglePointOfFailure(ctx),
     ...detectQuality(ctx),
+    ...detectMethodSequence(ctx),
     ...detectCapability(ctx),
     ...detectDataGaps(ctx),
   ];

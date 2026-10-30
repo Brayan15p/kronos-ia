@@ -54,6 +54,10 @@ export interface CycleRecord {
   qualityPass: boolean;
   defects: string[];
   notes: string;
+  /** Pasos que el observador marcó como no hechos (modo secuencia observada). */
+  omittedSteps?: number[];
+  /** "observada": `steps` está en el orden real en que se hicieron, no forzado por el cronómetro. */
+  sequenceMode?: "observada";
 }
 
 export interface DefectRecord {
